@@ -1,0 +1,15 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "verus build",
+      "type": "shell",
+      "command": "PATH=\"${env:HOME}/src/verus:$PATH\" cargo verus build",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$rustc"
+    }
+  ]
+}

@@ -2,7 +2,7 @@ use vstd::prelude::*;
 
 use crate::ref2;
 
-use crate::machine::*;
+use verus_machine::machine::*;
 use crate::shared::*;
 
 verus! {
@@ -539,6 +539,10 @@ impl ConvergentEvent<State> for SensorMainlandInDepart {
     proof fn proof_convergence(ctx: BridgeCtx, state: State) {}
 }
 
+impl NewEvent<State> for SensorMainlandInDepart {
+    proof fn proof_stuttering(ctx: BridgeCtx, state: State) {}
+}
+
 pub struct SensorIslandOutDepart;
 impl Event<State> for SensorIslandOutDepart {
     open spec fn guard(ctx: BridgeCtx, state: State) -> bool {
@@ -608,6 +612,10 @@ impl ConvergentEvent<State> for SensorIslandInDepart {
     }
 
     proof fn proof_convergence(ctx: BridgeCtx, state: State) {}
+}
+
+impl NewEvent<State> for SensorIslandInDepart {
+    proof fn proof_stuttering(ctx: BridgeCtx, state: State) {}
 }
 
 proof fn proof_deadlock_free(ctx: BridgeCtx, state: State)

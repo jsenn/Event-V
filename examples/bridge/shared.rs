@@ -1,6 +1,6 @@
 use vstd::prelude::*;
 
-use crate::machine::MachineContext;
+use verus_machine::machine::MachineContext;
 
 verus! {
 

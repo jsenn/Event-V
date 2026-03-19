@@ -1,6 +1,6 @@
 use vstd::prelude::*;
 
-use crate::machine::*;
+use verus_machine::machine::*;
 use crate::shared::*;
 
 

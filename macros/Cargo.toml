@@ -1,0 +1,13 @@
+[package]
+name = "verus-machine-macros"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2", features = ["full"] }
+verus_syn = { version = "=0.0.0-2026-03-15-0111", features = ["full", "printing"] }
+quote = "1"
+proc-macro2 = "1"

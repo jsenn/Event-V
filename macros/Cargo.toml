@@ -8,6 +8,6 @@ proc-macro = true
 
 [dependencies]
 syn = { version = "2", features = ["full"] }
-verus_syn = { version = "=0.0.0-2026-03-15-0111", features = ["full", "printing"] }
+verus_syn = { path = "../../verus-src/dependencies/syn", features = ["full", "printing"] }
 quote = "1"
 proc-macro2 = "1"

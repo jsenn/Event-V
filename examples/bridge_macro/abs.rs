@@ -2,12 +2,17 @@ use vstd::prelude::*;
 
 use verus_machine::machine::*;
 use verus_machine::verus_machine;
-use crate::shared::*;
 
 verus_machine! {
 
 deadlock_free machine Abs {
-    ctx: BridgeCtx,
+    ctx {
+        max_cars: nat,
+    }
+
+    valid(ctx) {
+        ctx.max_cars > 0
+    }
 
     state {
         cars: nat,

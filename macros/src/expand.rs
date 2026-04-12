@@ -17,7 +17,7 @@ fn abstract_event_path(refines_path: &Path, event_name: &syn::Ident) -> TokenStr
 
 pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
     let name = &decl.name;
-    let ctx_type = &decl.ctx_type;
+    let ctx_type = decl.ctx.spec_type();
 
     // --- State struct ---
     let field_defs: Vec<_> = decl
@@ -173,12 +173,88 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         quote! {}
     };
 
+    // --- Auxiliary functions ---
+    let aux_fn_impls: Vec<_> = decl
+        .aux_fns
+        .iter()
+        .map(|f| {
+            let fn_name = &f.name;
+            let state_name = &f.state_name;
+            let ret_type = &f.ret_type;
+            let body = &f.body;
+            quote! {
+                pub open spec fn #fn_name(&self) -> #ret_type {
+                    let #state_name = *self;
+                    #body
+                }
+            }
+        })
+        .collect();
+
+    let aux_fns_impl = if aux_fn_impls.is_empty() {
+        quote! {}
+    } else {
+        quote! {
+            impl #name {
+                #(#aux_fn_impls)*
+            }
+        }
+    };
+
+    // --- Inline ctx struct + MachineContext impl ---
+    let ctx_struct_impl = match &decl.ctx {
+        CtxDecl::Inline { fields, valid } => {
+            let ctx_field_defs: Vec<_> = fields
+                .iter()
+                .map(|f| {
+                    let fname = &f.name;
+                    let fty = &f.ty;
+                    quote! { pub #fname: #fty }
+                })
+                .collect();
+
+            let valid_impl = if let Some(v) = valid {
+                let v_ctx = &v.ctx_name;
+                let v_body = &v.body;
+                quote! {
+                    impl MachineContext for Ctx {
+                        open spec fn valid(&self) -> bool {
+                            let #v_ctx = *self;
+                            #v_body
+                        }
+                    }
+                }
+            } else {
+                quote! {
+                    impl MachineContext for Ctx {
+                        open spec fn valid(&self) -> bool {
+                            true
+                        }
+                    }
+                }
+            };
+
+            quote! {
+                pub struct Ctx {
+                    #(#ctx_field_defs,)*
+                }
+
+                #valid_impl
+            }
+        }
+        CtxDecl::External(_) => quote! {},
+    };
+
     // --- Wrap everything in verus! ---
     quote! {
         verus! {
+            #ctx_struct_impl
+
             pub struct #name {
                 #(#field_defs,)*
             }
+
+            #aux_fns_impl
 
             #validate_impl
 
@@ -197,7 +273,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
 
 fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
     let machine_name = &decl.name;
-    let ctx_type = &decl.ctx_type;
+    let ctx_type = decl.ctx.spec_type();
     let event_name = &evt.name;
 
     let guard_ctx = &evt.guard.ctx_name;

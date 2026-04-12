@@ -262,15 +262,26 @@ fn transform_body(body: &TokenStream) -> TokenStream {
     }
 }
 
-/// Build the exec context type name by appending `Exec` to the last path segment.
+/// Build the exec context type path from a spec context type.
+///
+/// For a path like `abs::Ctx`, produces `abs::animate::Ctx` — the exec mirror
+/// lives inside the `animate` submodule of the declaring machine's module.
 fn exec_ctx_type(spec_type: &Type) -> TokenStream {
     match spec_type {
         Type::Path(tp) => {
-            let mut path = tp.path.clone();
-            if let Some(last) = path.segments.last_mut() {
-                last.ident = format_ident!("{}Exec", last.ident);
+            let mut segments: Vec<_> = tp.path.segments.iter().collect();
+            if segments.len() >= 2 {
+                // e.g. abs::Ctx → abs::animate::Ctx
+                let last = segments.pop().unwrap();
+                let prefix: Vec<_> = segments.iter().map(|s| quote! { #s }).collect();
+                let type_name = &last.ident;
+                quote! { #(#prefix::)* animate::#type_name }
+            } else {
+                // Single-segment path (e.g. just `Ctx`) — assume it's in the
+                // same module; animate::Ctx will shadow via `use super::*`
+                let ident = &segments[0].ident;
+                quote! { #ident }
             }
-            quote! { #path }
         }
         _ => quote! { #spec_type },
     }
@@ -291,7 +302,29 @@ pub fn expand_animate(decl: &MachineDecl) -> TokenStream {
     let name = &decl.name;
     let name_str = name.to_string();
     let event_enum_name = format_ident!("{}Event", name);
-    let exec_ctx = exec_ctx_type(&decl.ctx_type);
+
+    // Determine exec ctx type and whether we need to generate it
+    let (exec_ctx, exec_ctx_struct) = match &decl.ctx {
+        CtxDecl::External(ty) => (exec_ctx_type(ty), quote! {}),
+        CtxDecl::Inline { fields, .. } => {
+            let ctx_type: TokenStream = quote! { Ctx };
+            let exec_fields: Vec<_> = fields
+                .iter()
+                .map(|f| {
+                    let fname = &f.name;
+                    let exec_ty = map_type_to_exec(&f.ty);
+                    quote! { pub #fname: #exec_ty }
+                })
+                .collect();
+            let struct_def = quote! {
+                #[derive(Debug, Clone, PartialEq)]
+                pub struct Ctx {
+                    #(#exec_fields,)*
+                }
+            };
+            (ctx_type, struct_def)
+        }
+    };
 
     // --- State struct fields with executable types ---
     let exec_fields: Vec<_> = decl
@@ -393,11 +426,41 @@ pub fn expand_animate(decl: &MachineDecl) -> TokenStream {
         })
         .collect();
 
+    // --- Auxiliary function exec impls ---
+    let aux_fn_exec_methods: Vec<_> = decl
+        .aux_fns
+        .iter()
+        .map(|f| {
+            let fn_name = &f.name;
+            let state_name = &f.state_name;
+            let exec_ret_type = map_type_to_exec(&f.ret_type);
+            let exec_body = transform_body(&f.body);
+            quote! {
+                pub fn #fn_name(&self) -> #exec_ret_type {
+                    let #state_name = self.clone();
+                    #exec_body
+                }
+            }
+        })
+        .collect();
+
+    let aux_fn_exec_impl = if aux_fn_exec_methods.is_empty() {
+        quote! {}
+    } else {
+        quote! {
+            impl #name {
+                #(#aux_fn_exec_methods)*
+            }
+        }
+    };
+
     quote! {
         #[cfg(not(verus_only))]
         #[allow(dead_code, unused_variables)]
         pub mod animate {
             use super::*;
+
+            #exec_ctx_struct
 
             #[derive(Debug, Clone, PartialEq)]
             pub struct #name {
@@ -411,6 +474,8 @@ pub fn expand_animate(decl: &MachineDecl) -> TokenStream {
                         .finish()
                 }
             }
+
+            #aux_fn_exec_impl
 
             #[derive(Debug, Clone, Copy, PartialEq, Eq)]
             pub enum #event_enum_name {

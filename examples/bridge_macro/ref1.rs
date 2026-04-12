@@ -4,27 +4,20 @@ use crate::abs;
 
 use verus_machine::machine::*;
 use verus_machine::verus_machine;
-use crate::shared::*;
-
-// Auxiliary functions must be defined outside the macro for now.
-// (This is one of the open questions in the spec.)
-verus! {
-    impl Ref1 {
-        pub open spec fn total_cars(&self) -> nat {
-            self.cars_to_island + self.cars_on_island + self.cars_to_mainland
-        }
-    }
-}
 
 verus_machine! {
 
 deadlock_free machine Ref1 refines abs::Abs {
-    ctx: BridgeCtx,
+    ctx: abs::Ctx,
 
     state {
         cars_to_island: nat,
         cars_on_island: nat,
         cars_to_mainland: nat,
+    }
+
+    fn total_cars(state) -> nat {
+        state.cars_to_island + state.cars_on_island + state.cars_to_mainland
     }
 
     init(ctx) {
@@ -108,12 +101,4 @@ deadlock_free machine Ref1 refines abs::Abs {
     }
 }
 
-}
-
-// Auxiliary function for animation (mirrors the spec version above).
-#[cfg(not(verus_only))]
-impl animate::Ref1 {
-    pub fn total_cars(&self) -> verus_machine::exec_types::Nat {
-        &self.cars_to_island + &self.cars_on_island + &self.cars_to_mainland
-    }
 }

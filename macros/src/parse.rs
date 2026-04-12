@@ -10,6 +10,8 @@ mod kw {
     syn::custom_keyword!(deadlock_free);
     syn::custom_keyword!(machine);
     syn::custom_keyword!(refines);
+    syn::custom_keyword!(ctx);
+    syn::custom_keyword!(valid);
     syn::custom_keyword!(state);
     syn::custom_keyword!(init);
     syn::custom_keyword!(lift);
@@ -23,12 +25,41 @@ mod kw {
     syn::custom_keyword!(convergent);
 }
 
+pub enum CtxDecl {
+    /// `ctx: SomeType` — reference to an externally-defined context type.
+    External(Type),
+    /// `ctx { field: type, ... }` — inline context declaration.
+    /// Generates a `Ctx` struct in both spec and exec scopes.
+    Inline {
+        fields: Vec<StateField>,
+        valid: Option<ValidDecl>,
+    },
+}
+
+pub struct ValidDecl {
+    pub ctx_name: Ident,
+    pub body: TokenStream,
+}
+
+impl CtxDecl {
+    /// Return the spec-level type to use in trait impls and function signatures.
+    /// For external ctx, this is the user-provided type.
+    /// For inline ctx, this is `Ctx`.
+    pub fn spec_type(&self) -> Type {
+        match self {
+            CtxDecl::External(ty) => ty.clone(),
+            CtxDecl::Inline { .. } => syn::parse_quote!(Ctx),
+        }
+    }
+}
+
 pub struct MachineDecl {
     pub deadlock_free: bool,
     pub name: Ident,
     pub refines: Option<Path>,
-    pub ctx_type: Type,
+    pub ctx: CtxDecl,
     pub state_fields: Vec<StateField>,
+    pub aux_fns: Vec<AuxFnDecl>,
     pub init: InitDecl,
     pub lift: Option<LiftDecl>,
     pub invariant: Option<InvariantDecl>,
@@ -69,6 +100,13 @@ pub struct EventDecl {
 pub struct FnBody {
     pub ctx_name: Ident,
     pub state_name: Ident,
+    pub body: TokenStream,
+}
+
+pub struct AuxFnDecl {
+    pub name: Ident,
+    pub state_name: Ident,
+    pub ret_type: Type,
     pub body: TokenStream,
 }
 
@@ -181,24 +219,73 @@ impl Parse for MachineDecl {
         let content;
         braced!(content in input);
 
-        // First item: ctx: Type
-        let _ctx_label: Ident = content.parse()?;
-        content.parse::<Token![:]>()?;
-        let ctx_type: Type = content.parse()?;
-        // Optional trailing comma
-        if content.peek(Token![,]) {
-            content.parse::<Token![,]>()?;
-        }
+        // First item: ctx: Type  OR  ctx { fields... }
+        content.parse::<kw::ctx>()?;
+        let mut ctx = if content.peek(Token![:]) {
+            // External: ctx: SomeType
+            content.parse::<Token![:]>()?;
+            let ctx_type: Type = content.parse()?;
+            if content.peek(Token![,]) {
+                content.parse::<Token![,]>()?;
+            }
+            CtxDecl::External(ctx_type)
+        } else {
+            // Inline: ctx { field: type, ... }
+            let ctx_content;
+            braced!(ctx_content in content);
+            let fields: Punctuated<StateField, Token![,]> =
+                ctx_content.parse_terminated(StateField::parse, Token![,])?;
+            CtxDecl::Inline {
+                fields: fields.into_iter().collect(),
+                valid: None, // parsed below if present
+            }
+        };
 
         // Parse remaining items in any order
         let mut state_fields = None;
+        let mut aux_fns = Vec::new();
         let mut init = None;
         let mut lift = None;
         let mut invariant = None;
         let mut events = Vec::new();
 
         while !content.is_empty() {
-            if content.peek(kw::state) {
+            if content.peek(kw::valid) {
+                content.parse::<kw::valid>()?;
+                let params;
+                parenthesized!(params in content);
+                let ctx_name: Ident = params.parse()?;
+                let body_content;
+                braced!(body_content in content);
+                let body: TokenStream = body_content.parse()?;
+                match &mut ctx {
+                    CtxDecl::Inline { ref mut valid, .. } => {
+                        *valid = Some(ValidDecl { ctx_name, body });
+                    }
+                    CtxDecl::External(_) => {
+                        return Err(content.error(
+                            "'valid' block can only be used with inline ctx { } declaration",
+                        ));
+                    }
+                }
+            } else if content.peek(Token![fn]) {
+                content.parse::<Token![fn]>()?;
+                let fn_name: Ident = content.parse()?;
+                let params;
+                parenthesized!(params in content);
+                let state_name: Ident = params.parse()?;
+                content.parse::<Token![->]>()?;
+                let ret_type: Type = content.parse()?;
+                let body_content;
+                braced!(body_content in content);
+                let body: TokenStream = body_content.parse()?;
+                aux_fns.push(AuxFnDecl {
+                    name: fn_name,
+                    state_name,
+                    ret_type,
+                    body,
+                });
+            } else if content.peek(kw::state) {
                 content.parse::<kw::state>()?;
                 let state_content;
                 braced!(state_content in content);
@@ -246,7 +333,7 @@ impl Parse for MachineDecl {
                 events.push(parse_event(&content)?);
             } else {
                 return Err(content.error(
-                    "expected 'state', 'init', 'lift', 'invariant', or event declaration",
+                    "expected 'state', 'fn', 'valid', 'init', 'lift', 'invariant', or event declaration",
                 ));
             }
         }
@@ -256,8 +343,9 @@ impl Parse for MachineDecl {
             deadlock_free,
             name,
             refines,
-            ctx_type,
+            ctx,
             state_fields: state_fields.unwrap_or_default(),
+            aux_fns,
             init: init.ok_or_else(|| syn::Error::new(name_span, "missing 'init' block"))?,
             lift,
             invariant,

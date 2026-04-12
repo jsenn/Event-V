@@ -227,15 +227,11 @@ dependencies = [
 
 [[package]]
 name = "verus_builtin"
-version = "0.0.0-2026-03-17-2326"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7ab914ab490975465ecb3286edceecb0743c3628ddeefcdf25158683e83e2fe"
+version = "0.0.0-2026-04-05-0114"
 
 [[package]]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-03-17-2326"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46f1f1ee124e0bcb5cec79836ff015d138ea53bff51839a85b8364cdc8b79232"
+version = "0.0.0-2026-04-05-0114"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -247,9 +243,7 @@ dependencies = [
 
 [[package]]
 name = "verus_prettyplease"
-version = "0.0.0-2026-03-15-0111"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eadebc1e3b522b32c178fd2fb882e691880ff983415497232c74aa9b72bc0b65"
+version = "0.0.0-2026-04-05-0114"
 dependencies = [
  "proc-macro2",
  "verus_syn",
@@ -257,9 +251,7 @@ dependencies = [
 
 [[package]]
 name = "verus_state_machines_macros"
-version = "0.0.0-2026-03-15-0111"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b824c6405f8e8a063ca4a26fca1f454cb02de0c1c4da685e3e7f1974899129d5"
+version = "0.0.0-2026-04-05-0114"
 dependencies = [
  "indexmap",
  "proc-macro2",
@@ -269,9 +261,7 @@ dependencies = [
 
 [[package]]
 name = "verus_syn"
-version = "0.0.0-2026-03-15-0111"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1694faf01f89e1abc996da7b8d24a4e0d1ebd70147dc659e7a5dd680af696772"
+version = "0.0.0-2026-04-05-0114"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -280,9 +270,7 @@ dependencies = [
 
 [[package]]
 name = "vstd"
-version = "0.0.0-2026-03-17-2326"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13bbf59dfaa6a7bcb327412c778a5d2b2c226dc65473a981ae6ec53a04c75aba"
+version = "0.0.0-2026-04-05-0114"
 dependencies = [
  "verus_builtin",
  "verus_builtin_macros",

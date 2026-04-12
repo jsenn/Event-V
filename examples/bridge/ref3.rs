@@ -115,7 +115,16 @@ impl State {
 impl Machine for State {
     type Ctx = BridgeCtx;
 
-    open spec fn init(ctx: Self::Ctx) -> Self {
+    open spec fn inv(ctx: Self::Ctx, state: Self) -> bool {
+        state.validate(ctx)
+    }
+}
+
+pub struct Initialize;
+impl Init<State> for Initialize {
+    type Input = ();
+
+    open spec fn init(ctx: BridgeCtx, _input: ()) -> State {
         State {
             con: Controller {
                 flag_entered_mainland: Flag::Clear,
@@ -146,11 +155,7 @@ impl Machine for State {
         }
     }
 
-    open spec fn inv(ctx: Self::Ctx, state: Self) -> bool {
-        state.validate(ctx)
-    }
-
-    proof fn proof_init_safety(ctx: Self::Ctx) {}
+    proof fn proof_safety(ctx: BridgeCtx, _input: ()) {}
 }
 
 impl Refinement for State {
@@ -161,18 +166,26 @@ impl Refinement for State {
     }
 
     proof fn proof_lift_ctx_valid(ctx: Self::Ctx) {}
-    proof fn proof_init_lift(ctx: Self::Ctx) {}
     proof fn proof_lift_safe(ctx: Self::Ctx, state: Self) {}
+}
+
+impl RefinedInit<State, ref2::Initialize> for Initialize {
+    open spec fn lift_in(_input: ()) -> () { () }
+
+    proof fn proof_simulation(ctx: BridgeCtx, _input: ()) {}
 }
 
 pub struct MainlandIn;
 impl Event<State> for MainlandIn {
-    open spec fn guard(ctx: BridgeCtx, state: State) -> bool {
+    type Input = ();
+    type Output = ();
+
+    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
         &&& state.con.flag_entered_mainland.is_set()
         &&& state.con.cars_to_mainland > 0
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State) -> State {
+    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
         State {
             con: Controller {
                 flag_entered_mainland: Flag::Clear,
@@ -183,22 +196,30 @@ impl Event<State> for MainlandIn {
         }
     }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State) {}
+    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+
+    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl RefinedEvent<State, ref2::MainlandIn> for MainlandIn {
-    proof fn proof_strengthening(ctx: BridgeCtx, state: State) {}
-    proof fn proof_simulation(ctx: BridgeCtx, state: State) {}
+    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_out(_output: ()) -> () { () }
+
+    proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
+    proof fn proof_simulation(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 pub struct MainlandOut;
 impl Event<State> for MainlandOut {
-    open spec fn guard(ctx: BridgeCtx, state: State) -> bool {
+    type Input = ();
+    type Output = ();
+
+    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
         &&& state.con.flag_left_mainland.is_set()
         &&& state.con.total_cars() + 1 <= ctx.max_cars
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State) -> State {
+    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
         State {
             con: Controller {
                 flag_left_mainland: Flag::Clear,
@@ -215,23 +236,30 @@ impl Event<State> for MainlandOut {
         }
     }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State) {}
+    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+
+    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl RefinedEvent<State, ref2::MainlandOut> for MainlandOut {
-    proof fn proof_strengthening(ctx: BridgeCtx, state: State) {}
+    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_out(_output: ()) -> () { () }
 
-    proof fn proof_simulation(ctx: BridgeCtx, state: State) {}
+    proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
+    proof fn proof_simulation(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 pub struct IslandIn;
 impl Event<State> for IslandIn {
-    open spec fn guard(ctx: BridgeCtx, state: State) -> bool {
+    type Input = ();
+    type Output = ();
+
+    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
         &&& state.con.flag_entered_island.is_set()
         &&& state.con.cars_to_island > 0
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State) -> State {
+    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
         State {
             con: Controller {
                 flag_entered_island: Flag::Clear,
@@ -243,22 +271,30 @@ impl Event<State> for IslandIn {
         }
     }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State) {}
+    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+
+    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl RefinedEvent<State, ref2::IslandIn> for IslandIn {
-    proof fn proof_strengthening(ctx: BridgeCtx, state: State) {}
-    proof fn proof_simulation(ctx: BridgeCtx, state: State) {}
+    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_out(_output: ()) -> () { () }
+
+    proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
+    proof fn proof_simulation(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 pub struct IslandOut;
 impl Event<State> for IslandOut {
-    open spec fn guard(ctx: BridgeCtx, state: State) -> bool {
+    type Input = ();
+    type Output = ();
+
+    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
         &&& state.con.flag_left_island.is_set()
         &&& state.con.cars_on_island > 0
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State) -> State {
+    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
         State {
             con: Controller {
                 flag_left_island: Flag::Clear,
@@ -276,12 +312,25 @@ impl Event<State> for IslandOut {
         }
     }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State) {}
+    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+
+    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
+}
+
+impl RefinedEvent<State, ref2::IslandOut> for IslandOut {
+    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_out(_output: ()) -> () { () }
+
+    proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
+    proof fn proof_simulation(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 pub struct TurnGreenMainland;
 impl Event<State> for TurnGreenMainland {
-    open spec fn guard(ctx: BridgeCtx, state: State) -> bool {
+    type Input = ();
+    type Output = ();
+
+    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
         &&& state.con.light_mainland.is_red()
         &&& state.con.car_left_island
         &&& state.con.flag_left_island.is_clear()
@@ -289,7 +338,7 @@ impl Event<State> for TurnGreenMainland {
         &&& state.con.total_cars() < ctx.max_cars
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State) -> State {
+    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
         State {
             con: Controller {
                 light_mainland: TrafficLight::Green,
@@ -301,17 +350,25 @@ impl Event<State> for TurnGreenMainland {
         }
     }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State) {}
+    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+
+    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl RefinedEvent<State, ref2::TurnGreenMainland> for TurnGreenMainland {
-    proof fn proof_strengthening(ctx: BridgeCtx, state: State) {}
-    proof fn proof_simulation(ctx: BridgeCtx, state: State) {}
+    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_out(_output: ()) -> () { () }
+
+    proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
+    proof fn proof_simulation(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 pub struct TurnGreenIsland;
 impl Event<State> for TurnGreenIsland {
-    open spec fn guard(ctx: BridgeCtx, state: State) -> bool {
+    type Input = ();
+    type Output = ();
+
+    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
         &&& state.con.light_island.is_red()
         &&& state.con.car_left_mainland
         &&& state.con.flag_left_mainland.is_clear()
@@ -319,7 +376,7 @@ impl Event<State> for TurnGreenIsland {
         &&& state.con.cars_to_island == 0
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State) -> State {
+    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
         State {
             con: Controller {
                 light_island: TrafficLight::Green,
@@ -331,22 +388,30 @@ impl Event<State> for TurnGreenIsland {
         }
     }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State) {}
+    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+
+    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl RefinedEvent<State, ref2::TurnGreenIsland> for TurnGreenIsland {
-    proof fn proof_strengthening(ctx: BridgeCtx, state: State) {}
-    proof fn proof_simulation(ctx: BridgeCtx, state: State) {}
+    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_out(_output: ()) -> () { () }
+
+    proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
+    proof fn proof_simulation(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 pub struct SensorMainlandOutArrive;
 impl Event<State> for SensorMainlandOutArrive {
-    open spec fn guard(ctx: BridgeCtx, state: State) -> bool {
+    type Input = ();
+    type Output = ();
+
+    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
         &&& state.env.sensor_mainland_out.is_off()
         &&& state.con.flag_left_mainland.is_clear()
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State) -> State {
+    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
         State {
             env: Environment {
                 sensor_mainland_out: Sensor::On,
@@ -356,7 +421,9 @@ impl Event<State> for SensorMainlandOutArrive {
         }
     }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State) {}
+    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+
+    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl ConvergentEvent<State> for SensorMainlandOutArrive {
@@ -364,22 +431,25 @@ impl ConvergentEvent<State> for SensorMainlandOutArrive {
         state.env.sensor_mainland_out.is_off() as nat
     }
 
-    proof fn proof_convergence(ctx: BridgeCtx, state: State) {}
+    proof fn proof_convergence(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl NewEvent<State> for SensorMainlandOutArrive {
-    proof fn proof_stuttering(ctx: BridgeCtx, state: State) {}
+    proof fn proof_stuttering(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 pub struct SensorMainlandInArrive;
 impl Event<State> for SensorMainlandInArrive {
-    open spec fn guard(ctx: BridgeCtx, state: State) -> bool {
+    type Input = ();
+    type Output = ();
+
+    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
         &&& state.env.sensor_mainland_in.is_off()
         &&& state.con.flag_entered_mainland.is_clear()
         &&& state.env.cars_to_mainland > 0
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State) -> State {
+    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
         State {
             env: Environment {
                 sensor_mainland_in: Sensor::On,
@@ -389,7 +459,9 @@ impl Event<State> for SensorMainlandInArrive {
         }
     }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State) {}
+    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+
+    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl ConvergentEvent<State> for SensorMainlandInArrive {
@@ -397,22 +469,25 @@ impl ConvergentEvent<State> for SensorMainlandInArrive {
         state.env.sensor_mainland_in.is_off() as nat
     }
 
-    proof fn proof_convergence(ctx: BridgeCtx, state: State) {}
+    proof fn proof_convergence(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl NewEvent<State> for SensorMainlandInArrive {
-    proof fn proof_stuttering(ctx: BridgeCtx, state: State) {}
+    proof fn proof_stuttering(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 pub struct SensorIslandOutArrive;
 impl Event<State> for SensorIslandOutArrive {
-    open spec fn guard(ctx: BridgeCtx, state: State) -> bool {
+    type Input = ();
+    type Output = ();
+
+    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
         &&& state.env.cars_on_island > 0
         &&& state.env.sensor_island_out.is_off()
         &&& state.con.flag_left_island.is_clear()
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State) -> State {
+    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
         State {
             env: Environment {
                 sensor_island_out: Sensor::On,
@@ -422,7 +497,9 @@ impl Event<State> for SensorIslandOutArrive {
         }
     }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State) {}
+    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+
+    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl ConvergentEvent<State> for SensorIslandOutArrive {
@@ -430,22 +507,25 @@ impl ConvergentEvent<State> for SensorIslandOutArrive {
         state.env.sensor_island_out.is_off() as nat
     }
 
-    proof fn proof_convergence(ctx: BridgeCtx, state: State) {}
+    proof fn proof_convergence(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl NewEvent<State> for SensorIslandOutArrive {
-    proof fn proof_stuttering(ctx: BridgeCtx, state: State) {}
+    proof fn proof_stuttering(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 pub struct SensorIslandInArrive;
 impl Event<State> for SensorIslandInArrive {
-    open spec fn guard(ctx: BridgeCtx, state: State) -> bool {
+    type Input = ();
+    type Output = ();
+
+    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
         &&& state.env.cars_to_island > 0
         &&& state.env.sensor_island_in.is_off()
         &&& state.con.flag_entered_island.is_clear()
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State) -> State {
+    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
         State {
             env: Environment {
                 sensor_island_in: Sensor::On,
@@ -455,7 +535,9 @@ impl Event<State> for SensorIslandInArrive {
         }
     }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State) {}
+    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+
+    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl ConvergentEvent<State> for SensorIslandInArrive {
@@ -463,21 +545,24 @@ impl ConvergentEvent<State> for SensorIslandInArrive {
         state.env.sensor_island_in.is_off() as nat
     }
 
-    proof fn proof_convergence(ctx: BridgeCtx, state: State) {}
+    proof fn proof_convergence(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl NewEvent<State> for SensorIslandInArrive {
-    proof fn proof_stuttering(ctx: BridgeCtx, state: State) {}
+    proof fn proof_stuttering(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 pub struct SensorMainlandOutDepart;
 impl Event<State> for SensorMainlandOutDepart {
-    open spec fn guard(ctx: BridgeCtx, state: State) -> bool {
+    type Input = ();
+    type Output = ();
+
+    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
         &&& state.env.sensor_mainland_out.is_on()
         &&& state.con.light_mainland.is_green()
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State) -> State {
+    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
         State {
             con: Controller {
                 flag_left_mainland: Flag::Set,
@@ -492,7 +577,9 @@ impl Event<State> for SensorMainlandOutDepart {
         }
     }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State) {}
+    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+
+    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl ConvergentEvent<State> for SensorMainlandOutDepart {
@@ -500,20 +587,23 @@ impl ConvergentEvent<State> for SensorMainlandOutDepart {
         state.env.sensor_mainland_out.is_on() as nat
     }
 
-    proof fn proof_convergence(ctx: BridgeCtx, state: State) {}
+    proof fn proof_convergence(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl NewEvent<State> for SensorMainlandOutDepart {
-    proof fn proof_stuttering(ctx: BridgeCtx, state: State) {}
+    proof fn proof_stuttering(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 pub struct SensorMainlandInDepart;
 impl Event<State> for SensorMainlandInDepart {
-    open spec fn guard(ctx: BridgeCtx, state: State) -> bool {
+    type Input = ();
+    type Output = ();
+
+    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
         &&& state.env.sensor_mainland_in.is_on()
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State) -> State {
+    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
         State {
             con: Controller {
                 flag_entered_mainland: Flag::Set,
@@ -528,7 +618,9 @@ impl Event<State> for SensorMainlandInDepart {
         }
     }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State) {}
+    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+
+    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl ConvergentEvent<State> for SensorMainlandInDepart {
@@ -536,21 +628,24 @@ impl ConvergentEvent<State> for SensorMainlandInDepart {
         state.env.sensor_mainland_in.is_on() as nat
     }
 
-    proof fn proof_convergence(ctx: BridgeCtx, state: State) {}
+    proof fn proof_convergence(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl NewEvent<State> for SensorMainlandInDepart {
-    proof fn proof_stuttering(ctx: BridgeCtx, state: State) {}
+    proof fn proof_stuttering(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 pub struct SensorIslandOutDepart;
 impl Event<State> for SensorIslandOutDepart {
-    open spec fn guard(ctx: BridgeCtx, state: State) -> bool {
+    type Input = ();
+    type Output = ();
+
+    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
         &&& state.env.sensor_island_out.is_on()
         &&& state.con.light_island.is_green()
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State) -> State {
+    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
         State {
             con: Controller {
                 flag_left_island: Flag::Set,
@@ -566,7 +661,9 @@ impl Event<State> for SensorIslandOutDepart {
         }
     }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State) {}
+    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+
+    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl ConvergentEvent<State> for SensorIslandOutDepart {
@@ -574,20 +671,23 @@ impl ConvergentEvent<State> for SensorIslandOutDepart {
         state.env.sensor_island_out.is_on() as nat
     }
 
-    proof fn proof_convergence(ctx: BridgeCtx, state: State) {}
+    proof fn proof_convergence(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl NewEvent<State> for SensorIslandOutDepart {
-    proof fn proof_stuttering(ctx: BridgeCtx, state: State) {}
+    proof fn proof_stuttering(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 pub struct SensorIslandInDepart;
 impl Event<State> for SensorIslandInDepart {
-    open spec fn guard(ctx: BridgeCtx, state: State) -> bool {
+    type Input = ();
+    type Output = ();
+
+    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
         &&& state.env.sensor_island_in.is_on()
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State) -> State {
+    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
         State {
             con: Controller {
                 flag_entered_island: Flag::Set,
@@ -603,7 +703,9 @@ impl Event<State> for SensorIslandInDepart {
         }
     }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State) {}
+    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+
+    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl ConvergentEvent<State> for SensorIslandInDepart {
@@ -611,11 +713,11 @@ impl ConvergentEvent<State> for SensorIslandInDepart {
         state.env.sensor_island_in.is_on() as nat
     }
 
-    proof fn proof_convergence(ctx: BridgeCtx, state: State) {}
+    proof fn proof_convergence(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 impl NewEvent<State> for SensorIslandInDepart {
-    proof fn proof_stuttering(ctx: BridgeCtx, state: State) {}
+    proof fn proof_stuttering(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 proof fn proof_deadlock_free(ctx: BridgeCtx, state: State)
@@ -623,20 +725,20 @@ proof fn proof_deadlock_free(ctx: BridgeCtx, state: State)
         ctx.valid(),
         State::inv(ctx, state),
     ensures {
-        ||| MainlandIn::guard(ctx, state)
-        ||| MainlandOut::guard(ctx, state)
-        ||| IslandIn::guard(ctx, state)
-        ||| IslandOut::guard(ctx, state)
-        ||| TurnGreenMainland::guard(ctx, state)
-        ||| TurnGreenIsland::guard(ctx, state)
-        ||| SensorMainlandOutArrive::guard(ctx, state)
-        ||| SensorMainlandOutDepart::guard(ctx, state)
-        ||| SensorMainlandInArrive::guard(ctx, state)
-        ||| SensorMainlandInDepart::guard(ctx, state)
-        ||| SensorIslandOutArrive::guard(ctx, state)
-        ||| SensorIslandOutDepart::guard(ctx, state)
-        ||| SensorIslandInArrive::guard(ctx, state)
-        ||| SensorIslandInDepart::guard(ctx, state)
+        ||| MainlandIn::guard(ctx, state, ())
+        ||| MainlandOut::guard(ctx, state, ())
+        ||| IslandIn::guard(ctx, state, ())
+        ||| IslandOut::guard(ctx, state, ())
+        ||| TurnGreenMainland::guard(ctx, state, ())
+        ||| TurnGreenIsland::guard(ctx, state, ())
+        ||| SensorMainlandOutArrive::guard(ctx, state, ())
+        ||| SensorMainlandOutDepart::guard(ctx, state, ())
+        ||| SensorMainlandInArrive::guard(ctx, state, ())
+        ||| SensorMainlandInDepart::guard(ctx, state, ())
+        ||| SensorIslandOutArrive::guard(ctx, state, ())
+        ||| SensorIslandOutDepart::guard(ctx, state, ())
+        ||| SensorIslandInArrive::guard(ctx, state, ())
+        ||| SensorIslandInDepart::guard(ctx, state, ())
     },
 {}
 

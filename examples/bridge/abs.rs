@@ -19,49 +19,64 @@ impl State {
 impl Machine for State {
     type Ctx = BridgeCtx;
 
-    open spec fn init(ctx: Self::Ctx) -> Self {
+    open spec fn inv(ctx: Self::Ctx, state: Self) -> bool {
+        state.validate(ctx)
+    }
+}
+
+pub struct Initialize;
+impl Init<State> for Initialize {
+    type Input = ();
+
+    open spec fn init(ctx: BridgeCtx, _input: ()) -> State {
         State {
             cars: 0,
         }
     }
 
-    open spec fn inv(ctx: Self::Ctx, state: Self) -> bool {
-        state.validate(ctx)
-    }
-
-    proof fn proof_init_safety(ctx: Self::Ctx) {}
+    proof fn proof_safety(ctx: BridgeCtx, _input: ()) {}
 }
 
 pub struct MainlandIn;
 impl Event<State> for MainlandIn {
-    open spec fn guard(ctx: BridgeCtx, state: State) -> bool {
+    type Input = ();
+    type Output = ();
+
+    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
         state.cars > 0
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State) -> State {
+    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
         State {
             cars: (state.cars - 1) as nat,
             ..state
         }
     }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State) {}
+    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+
+    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 pub struct MainlandOut;
 impl Event<State> for MainlandOut {
-    open spec fn guard(ctx: BridgeCtx, state: State) -> bool {
+    type Input = ();
+    type Output = ();
+
+    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
         state.cars < ctx.max_cars
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State) -> State {
+    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
         State {
             cars: (state.cars + 1),
             ..state
         }
     }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State) {}
+    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+
+    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
 proof fn proof_deadlock_free(ctx: BridgeCtx, state: State)
@@ -69,8 +84,8 @@ proof fn proof_deadlock_free(ctx: BridgeCtx, state: State)
         ctx.valid(),
         State::inv(ctx, state),
     ensures {
-        ||| MainlandIn::guard(ctx, state)
-        ||| MainlandOut::guard(ctx, state)
+        ||| MainlandIn::guard(ctx, state, ())
+        ||| MainlandOut::guard(ctx, state, ())
     },
 {}
 

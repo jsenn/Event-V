@@ -30,11 +30,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         })
         .collect();
 
-    // --- validate method + Machine impl ---
-    let init_ctx = &decl.init.ctx_name;
-    let init_body = &decl.init.body;
-
-    // Generate validate method on the struct.
+    // --- validate method ---
     // Abstract machines: validate = user invariant body
     // Refined machines: validate = abstract_validate && user invariant body
     let validate_impl = if let Some(ref inv) = decl.invariant {
@@ -62,7 +58,6 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             }
         }
     } else if decl.refines.is_some() {
-        // No user invariant but machine refines — just check abstract
         quote! {
             impl #name {
                 pub open spec fn validate(&self, ctx: #ctx_type) -> bool {
@@ -71,7 +66,6 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             }
         }
     } else {
-        // No invariant, no refinement — trivially true
         quote! {
             impl #name {
                 pub open spec fn validate(&self, _ctx: #ctx_type) -> bool {
@@ -81,21 +75,33 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         }
     };
 
+    // --- Machine impl (no longer contains init) ---
     let machine_impl = quote! {
         impl Machine for #name {
             type Ctx = #ctx_type;
 
-            open spec fn init(#init_ctx: Self::Ctx) -> Self {
+            open spec fn inv(ctx: Self::Ctx, state: Self) -> bool {
+                state.validate(ctx)
+            }
+        }
+    };
+
+    // --- Init impl ---
+    let init_ctx = &decl.init.ctx_name;
+    let init_body = &decl.init.body;
+    let init_impl = quote! {
+        pub struct Initialize;
+
+        impl Init<#name> for Initialize {
+            type Input = ();
+
+            open spec fn init(#init_ctx: #ctx_type, _input: ()) -> #name {
                 #name {
                     #init_body
                 }
             }
 
-            open spec fn inv(ctx: Self::Ctx, state: Self) -> bool {
-                state.validate(ctx)
-            }
-
-            proof fn proof_init_safety(ctx: Self::Ctx) {}
+            proof fn proof_safety(ctx: #ctx_type, _input: ()) {}
         }
     };
 
@@ -119,6 +125,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
 
     // --- Refinement impl ---
     let refinement_impl = if let Some(ref refines_path) = decl.refines {
+        let abstract_init = abstract_event_path(refines_path, &syn::Ident::new("Initialize", name.span()));
         quote! {
             impl Refinement for #name {
                 type Abstract = #refines_path;
@@ -128,8 +135,13 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
                 }
 
                 proof fn proof_lift_ctx_valid(ctx: Self::Ctx) {}
-                proof fn proof_init_lift(ctx: Self::Ctx) {}
                 proof fn proof_lift_safe(ctx: Self::Ctx, state: Self) {}
+            }
+
+            impl RefinedInit<#name, #abstract_init> for Initialize {
+                open spec fn lift_in(_input: ()) -> () { () }
+
+                proof fn proof_simulation(ctx: #ctx_type, _input: ()) {}
             }
         }
     } else {
@@ -140,15 +152,22 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
     let event_impls: Vec<_> = decl.events.iter().map(|evt| expand_event(decl, evt)).collect();
 
     // --- Deadlock freedom proof ---
-    // Use standard || infix instead of ||| prefix (quote! tokens lack real
-    // span/line info, which Verus needs to parse ||| prefix operators).
+    // For events with non-() Input, witness the existential via `exists|x: T| guard(..., x)`.
+    // For () Input, call the guard directly (Verus's auto-witness of `()` in an existential
+    // is unreliable).
     let deadlock_proof = if decl.deadlock_free {
         let guards: Vec<_> = decl
             .events
             .iter()
             .map(|evt| {
                 let ename = &evt.name;
-                quote! { #ename::guard(ctx, state) }
+                if let Some(ref param) = evt.input {
+                    let pname = &param.name;
+                    let pty = &param.ty;
+                    quote! { exists|#pname: #pty| #ename::guard(ctx, state, #pname) }
+                } else {
+                    quote! { #ename::guard(ctx, state, ()) }
+                }
             })
             .collect();
 
@@ -262,6 +281,8 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
 
             #machine_impl
 
+            #init_impl
+
             #refinement_impl
 
             #(#event_impls)*
@@ -284,31 +305,121 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
     let action_state = &evt.action.state_name;
     let action_body = &evt.action.body;
 
+    // --- Input type and parameter tokens ---
+    // When the event has an input (e.g. `event Put(elem: nat)`), the user-chosen
+    // param name is used as the formal parameter so it's visible inside
+    // guard/action/output bodies.
+    let (input_type, input_param) = if let Some(ref param) = evt.input {
+        let ty = &param.ty;
+        let name = &param.name;
+        (quote! { #ty }, quote! { #name: #ty })
+    } else {
+        (quote! { () }, quote! { _input: () })
+    };
+
+    // --- Output type ---
+    let output_type = if let Some(ref ty) = evt.output_type {
+        quote! { #ty }
+    } else {
+        quote! { () }
+    };
+
+    // --- Output function body ---
+    let output_fn = if let Some(ref output) = evt.output {
+        let out_ctx = &output.ctx_name;
+        let out_state = &output.state_name;
+        let out_body = &output.body;
+        quote! {
+            open spec fn output(#out_ctx: #ctx_type, #out_state: #machine_name, #input_param) -> #output_type {
+                #out_body
+            }
+        }
+    } else {
+        // No user-provided output block — emit a trivial `()` output.
+        quote! {
+            open spec fn output(_ctx: #ctx_type, _state: #machine_name, _input: #input_type) -> () {
+                ()
+            }
+        }
+    };
+
     let event_struct = quote! {
         pub struct #event_name;
     };
 
     let event_impl = quote! {
         impl Event<#machine_name> for #event_name {
-            open spec fn guard(#guard_ctx: #ctx_type, #guard_state: #machine_name) -> bool {
+            type Input = #input_type;
+            type Output = #output_type;
+
+            open spec fn guard(#guard_ctx: #ctx_type, #guard_state: #machine_name, #input_param) -> bool {
                 #guard_body
             }
 
-            open spec fn action(#action_ctx: #ctx_type, #action_state: #machine_name) -> #machine_name {
+            open spec fn action(#action_ctx: #ctx_type, #action_state: #machine_name, #input_param) -> #machine_name {
                 #action_body
             }
 
-            proof fn proof_safety(ctx: #ctx_type, state: #machine_name) {}
+            #output_fn
+
+            proof fn proof_safety(ctx: #ctx_type, state: #machine_name, #input_param) {}
         }
     };
 
     let refined_impl = if evt.refined {
         if let Some(ref refines_path) = decl.refines {
             let abstract_event = abstract_event_path(refines_path, event_name);
+
+            // lift_in: map concrete input to abstract input.
+            let lift_in_fn = if let Some(ref li) = evt.lift_in {
+                let li_param = &li.param_name;
+                let li_body = &li.body;
+                quote! {
+                    open spec fn lift_in(#li_param: #input_type)
+                        -> <#abstract_event as Event<#refines_path>>::Input
+                    {
+                        #li_body
+                    }
+                }
+            } else {
+                // Default: map to unit. Works when the abstract input type is `()`.
+                quote! {
+                    open spec fn lift_in(_input: #input_type)
+                        -> <#abstract_event as Event<#refines_path>>::Input
+                    {
+                        ()
+                    }
+                }
+            };
+
+            // lift_out: map concrete output to abstract output.
+            let lift_out_fn = if let Some(ref lo) = evt.lift_out {
+                let lo_param = &lo.param_name;
+                let lo_body = &lo.body;
+                quote! {
+                    open spec fn lift_out(#lo_param: #output_type)
+                        -> <#abstract_event as Event<#refines_path>>::Output
+                    {
+                        #lo_body
+                    }
+                }
+            } else {
+                quote! {
+                    open spec fn lift_out(_output: #output_type)
+                        -> <#abstract_event as Event<#refines_path>>::Output
+                    {
+                        ()
+                    }
+                }
+            };
+
             quote! {
                 impl RefinedEvent<#machine_name, #abstract_event> for #event_name {
-                    proof fn proof_strengthening(ctx: #ctx_type, state: #machine_name) {}
-                    proof fn proof_simulation(ctx: #ctx_type, state: #machine_name) {}
+                    #lift_in_fn
+                    #lift_out_fn
+
+                    proof fn proof_strengthening(ctx: #ctx_type, state: #machine_name, #input_param) {}
+                    proof fn proof_simulation(ctx: #ctx_type, state: #machine_name, #input_param) {}
                 }
             }
         } else {
@@ -328,7 +439,7 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
                     open spec fn variant(#var_ctx: #ctx_type, #var_state: #machine_name) -> nat {
                         #var_body
                     }
-                    proof fn proof_convergence(ctx: #ctx_type, state: #machine_name) {}
+                    proof fn proof_convergence(ctx: #ctx_type, state: #machine_name, #input_param) {}
                 }
             }
         } else {
@@ -341,7 +452,7 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
     let new_impl = if evt.concrete {
         quote! {
             impl NewEvent<#machine_name> for #event_name {
-                proof fn proof_stuttering(ctx: #ctx_type, state: #machine_name) {}
+                proof fn proof_stuttering(ctx: #ctx_type, state: #machine_name, #input_param) {}
             }
         }
     } else {

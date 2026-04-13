@@ -20,6 +20,9 @@ mod kw {
     syn::custom_keyword!(guard);
     syn::custom_keyword!(action);
     syn::custom_keyword!(variant);
+    syn::custom_keyword!(output);
+    syn::custom_keyword!(lift_in);
+    syn::custom_keyword!(lift_out);
     syn::custom_keyword!(refined);
     syn::custom_keyword!(concrete);
     syn::custom_keyword!(convergent);
@@ -87,14 +90,29 @@ pub struct InvariantDecl {
     pub body: TokenStream,
 }
 
+pub struct EventParam {
+    pub name: Ident,
+    pub ty: Type,
+}
+
+pub struct LiftFn {
+    pub param_name: Ident,
+    pub body: TokenStream,
+}
+
 pub struct EventDecl {
     pub refined: bool,
     pub concrete: bool,
     pub convergent: bool,
     pub name: Ident,
+    pub input: Option<EventParam>,
+    pub output_type: Option<Type>,
     pub guard: FnBody,
     pub action: FnBody,
+    pub output: Option<FnBody>,
     pub variant: Option<FnBody>,
+    pub lift_in: Option<LiftFn>,
+    pub lift_out: Option<LiftFn>,
 }
 
 pub struct FnBody {
@@ -159,12 +177,35 @@ fn parse_event(content: ParseStream) -> Result<EventDecl> {
     content.parse::<kw::event>()?;
     let name: Ident = content.parse()?;
 
+    // Parse optional input: event Name(param: Type)
+    let input = if content.peek(syn::token::Paren) {
+        let params;
+        parenthesized!(params in content);
+        let param_name: Ident = params.parse()?;
+        params.parse::<Token![:]>()?;
+        let param_ty: Type = params.parse()?;
+        Some(EventParam { name: param_name, ty: param_ty })
+    } else {
+        None
+    };
+
+    // Parse optional output type: -> Type
+    let output_type = if content.peek(Token![->]) {
+        content.parse::<Token![->]>()?;
+        Some(content.parse::<Type>()?)
+    } else {
+        None
+    };
+
     let event_content;
     braced!(event_content in content);
 
     let mut guard = None;
     let mut action = None;
+    let mut output = None;
     let mut variant = None;
+    let mut lift_in = None;
+    let mut lift_out = None;
 
     while !event_content.is_empty() {
         if event_content.peek(kw::guard) {
@@ -173,11 +214,34 @@ fn parse_event(content: ParseStream) -> Result<EventDecl> {
         } else if event_content.peek(kw::action) {
             event_content.parse::<kw::action>()?;
             action = Some(parse_fn_body(&event_content)?);
+        } else if event_content.peek(kw::output) {
+            event_content.parse::<kw::output>()?;
+            output = Some(parse_fn_body(&event_content)?);
         } else if event_content.peek(kw::variant) {
             event_content.parse::<kw::variant>()?;
             variant = Some(parse_fn_body(&event_content)?);
+        } else if event_content.peek(kw::lift_in) {
+            event_content.parse::<kw::lift_in>()?;
+            let params;
+            parenthesized!(params in event_content);
+            let param_name: Ident = params.parse()?;
+            let body_content;
+            braced!(body_content in event_content);
+            let body: TokenStream = body_content.parse()?;
+            lift_in = Some(LiftFn { param_name, body });
+        } else if event_content.peek(kw::lift_out) {
+            event_content.parse::<kw::lift_out>()?;
+            let params;
+            parenthesized!(params in event_content);
+            let param_name: Ident = params.parse()?;
+            let body_content;
+            braced!(body_content in event_content);
+            let body: TokenStream = body_content.parse()?;
+            lift_out = Some(LiftFn { param_name, body });
         } else {
-            return Err(event_content.error("expected 'guard', 'action', or 'variant'"));
+            return Err(event_content.error(
+                "expected 'guard', 'action', 'output', 'variant', 'lift_in', or 'lift_out'",
+            ));
         }
     }
 
@@ -187,9 +251,14 @@ fn parse_event(content: ParseStream) -> Result<EventDecl> {
         concrete,
         convergent,
         name,
+        input,
+        output_type,
         guard: guard.ok_or_else(|| syn::Error::new(name_span, "event missing 'guard'"))?,
         action: action.ok_or_else(|| syn::Error::new(name_span, "event missing 'action'"))?,
+        output,
         variant,
+        lift_in,
+        lift_out,
     })
 }
 

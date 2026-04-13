@@ -1,10 +1,15 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{GenericArgument, Ident, PathArguments, Type};
+use syn::{GenericArgument, PathArguments, Type};
 
 use crate::parse::*;
 
 /// Map a Verus spec type to an executable Rust type for the animate module.
+///
+/// `nat` / `int` become our `Nat` wrapper; `Seq` / `Set` / `Map` become the
+/// `exec_types` wrappers (which expose the full spec API — `Seq::empty()`,
+/// `.subrange()`, etc. — rather than a shallow `Vec` alias). Other types
+/// (user structs, `bool`, `i32`, ...) pass through unchanged.
 fn map_type_to_exec(ty: &Type) -> TokenStream {
     match ty {
         Type::Path(tp) => {
@@ -13,55 +18,16 @@ fn map_type_to_exec(ty: &Type) -> TokenStream {
                 match ident_str.as_str() {
                     "nat" | "int" => return quote! { verus_machine::exec_types::Nat },
                     "Seq" => {
-                        if let PathArguments::AngleBracketed(ref args) = last_seg.arguments {
-                            let inner: Vec<_> = args
-                                .args
-                                .iter()
-                                .filter_map(|arg| {
-                                    if let GenericArgument::Type(ref t) = arg {
-                                        Some(map_type_to_exec(t))
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect();
-                            return quote! { Vec<#(#inner),*> };
-                        }
-                        return quote! { Vec };
+                        let inner = generic_inner(&last_seg.arguments);
+                        return quote! { verus_machine::exec_types::Seq<#(#inner),*> };
                     }
                     "Set" => {
-                        if let PathArguments::AngleBracketed(ref args) = last_seg.arguments {
-                            let inner: Vec<_> = args
-                                .args
-                                .iter()
-                                .filter_map(|arg| {
-                                    if let GenericArgument::Type(ref t) = arg {
-                                        Some(map_type_to_exec(t))
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect();
-                            return quote! { ::std::collections::HashSet<#(#inner),*> };
-                        }
-                        return quote! { ::std::collections::HashSet };
+                        let inner = generic_inner(&last_seg.arguments);
+                        return quote! { ::std::collections::HashSet<#(#inner),*> };
                     }
                     "Map" => {
-                        if let PathArguments::AngleBracketed(ref args) = last_seg.arguments {
-                            let inner: Vec<_> = args
-                                .args
-                                .iter()
-                                .filter_map(|arg| {
-                                    if let GenericArgument::Type(ref t) = arg {
-                                        Some(map_type_to_exec(t))
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect();
-                            return quote! { ::std::collections::HashMap<#(#inner),*> };
-                        }
-                        return quote! { ::std::collections::HashMap };
+                        let inner = generic_inner(&last_seg.arguments);
+                        return quote! { ::std::collections::HashMap<#(#inner),*> };
                     }
                     _ => {}
                 }
@@ -70,6 +36,36 @@ fn map_type_to_exec(ty: &Type) -> TokenStream {
         }
         _ => quote! { #ty },
     }
+}
+
+fn generic_inner(args: &PathArguments) -> Vec<TokenStream> {
+    if let PathArguments::AngleBracketed(ref args) = args {
+        args.args
+            .iter()
+            .filter_map(|arg| {
+                if let GenericArgument::Type(ref t) = arg {
+                    Some(map_type_to_exec(t))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    } else {
+        Vec::new()
+    }
+}
+
+/// Short human-readable tag for a type, used as the `ty_kind` in an input
+/// prompt. `nat` → `"nat"`, `MyType` → `"MyType"`. Best-effort: for complex
+/// types we just stringify the last segment of the path.
+fn type_kind_label(ty: &Type) -> String {
+    if let Type::Path(tp) = ty {
+        if let Some(seg) = tp.path.segments.last() {
+            return seg.ident.to_string();
+        }
+    }
+    // Fallback to the full tokens — not pretty but unambiguous.
+    quote! { #ty }.to_string()
 }
 
 /// Check if a type is `nat` or `int` (Verus ghost types).
@@ -90,6 +86,7 @@ fn is_ghost_numeric(ty: &verus_syn::Type) -> bool {
 /// - `|||` prefix → `||` infix chain
 /// - `expr as nat` / `expr as int` → strip the cast
 /// - `..rest` in struct literals → `..rest.clone()`
+/// - `seq![...]` → `Seq::from_vec(vec![...])` (vstd's `seq!` is a spec-only macro)
 fn transform_expr(expr: &verus_syn::Expr) -> TokenStream {
     use verus_syn::Expr;
 
@@ -135,16 +132,14 @@ fn transform_expr(expr: &verus_syn::Expr) -> TokenStream {
                     if f.colon_token.is_some() {
                         quote! { #member: #value }
                     } else {
-                        // Shorthand like `Foo { x }` → `Foo { x }`
                         quote! { #member }
                     }
                 })
                 .collect();
             if let Some(ref rest) = s.rest {
                 let rest_expr = transform_expr(rest);
-                // Pre-clone the rest source to avoid partial move issues:
-                // field values may consume (move) individual fields, which would
-                // prevent cloning the whole struct afterwards.
+                // Pre-clone the rest source so field values may consume parts
+                // of it without aborting the final struct construction.
                 quote! { {
                     let __rest = #rest_expr.clone();
                     #path { #(#fields,)* ..__rest }
@@ -209,12 +204,35 @@ fn transform_expr(expr: &verus_syn::Expr) -> TokenStream {
             });
             quote! { if #cond { #(#then_stmts)* } #else_branch }
         }
-        Expr::Group(g) => {
-            transform_expr(&g.expr)
+        Expr::Index(i) => {
+            let base = transform_expr(&i.expr);
+            let idx = transform_expr(&i.index);
+            // Route through `.at(i)` so bare integer literals like `seq[0]`
+            // resolve unambiguously (direct `[]` indexing would need the
+            // compiler to pick one of the many `Index<_>` impls on `Seq`).
+            // `.at` returns `&T`; spec code wants a value, so clone.
+            quote! { #base.at(#idx).clone() }
         }
-        // For all other expression types, use verus_syn's ToTokens.
-        // This covers paths, literals, and standard Rust expressions
-        // that don't contain Verus-specific syntax.
+        Expr::Group(g) => transform_expr(&g.expr),
+        Expr::Macro(m) => {
+            let mac = &m.mac;
+            if let Some(last) = mac.path.segments.last() {
+                let name = last.ident.to_string();
+                if name == "seq" {
+                    // `seq![a, b, c]` (vstd spec macro) → exec Seq built
+                    // from a plain vec. The inner tokens are spliced through;
+                    // if they contain Verus syntax this is a best-effort
+                    // pass-through that will fail to compile rather than
+                    // silently do the wrong thing.
+                    let toks = &mac.tokens;
+                    return quote! {
+                        verus_machine::exec_types::Seq::from_vec(::std::vec![#toks])
+                    };
+                }
+            }
+            quote! { #expr }
+        }
+        // Paths, literals, and other standard expressions pass through.
         _ => quote! { #expr },
     }
 }
@@ -230,7 +248,6 @@ fn transform_stmt(stmt: &verus_syn::Stmt) -> TokenStream {
             }
         }
         verus_syn::Stmt::Local(local) => {
-            // let bindings: transform the init expression if present
             let pat = &local.pat;
             if let Some(ref init) = local.init {
                 let init_expr = transform_expr(&init.expr);
@@ -245,16 +262,13 @@ fn transform_stmt(stmt: &verus_syn::Stmt) -> TokenStream {
 
 /// Parse a TokenStream body as a verus_syn expression and transform it to executable Rust.
 fn transform_body(body: &TokenStream) -> TokenStream {
-    // Try parsing the body as a verus_syn expression
     match verus_syn::parse2::<verus_syn::Expr>(body.clone()) {
         Ok(expr) => transform_expr(&expr),
         Err(_) => {
-            // If parsing as a single expression fails, try as a block
             let block_tokens = quote! { { #body } };
             match verus_syn::parse2::<verus_syn::Expr>(block_tokens) {
                 Ok(expr) => transform_expr(&expr),
                 Err(_) => {
-                    // Fallback: emit as-is with a compile warning
                     quote! { compile_error!("animate: could not parse body as verus expression") }
                 }
             }
@@ -271,14 +285,11 @@ fn exec_ctx_type(spec_type: &Type) -> TokenStream {
         Type::Path(tp) => {
             let mut segments: Vec<_> = tp.path.segments.iter().collect();
             if segments.len() >= 2 {
-                // e.g. abs::Ctx → abs::animate::Ctx
                 let last = segments.pop().unwrap();
                 let prefix: Vec<_> = segments.iter().map(|s| quote! { #s }).collect();
                 let type_name = &last.ident;
                 quote! { #(#prefix::)* animate::#type_name }
             } else {
-                // Single-segment path (e.g. just `Ctx`) — assume it's in the
-                // same module; animate::Ctx will shadow via `use super::*`
                 let ident = &segments[0].ident;
                 quote! { #ident }
             }
@@ -349,14 +360,41 @@ pub fn expand_animate(decl: &MachineDecl) -> TokenStream {
         .collect();
 
     // --- Event enum ---
-    let event_names: Vec<&Ident> = decl.events.iter().map(|e| &e.name).collect();
-    let event_name_strs: Vec<String> = decl.events.iter().map(|e| e.name.to_string()).collect();
+    // Each event becomes one variant; events with an `Input` carry that input
+    // as the sole payload so menu selection / random stepping / construct_event
+    // all get a uniform unpack point.
+    let event_variants: Vec<TokenStream> = decl
+        .events
+        .iter()
+        .map(|evt| {
+            let ename = &evt.name;
+            if let Some(ref param) = evt.input {
+                let ty = map_type_to_exec(&param.ty);
+                quote! { #ename(#ty) }
+            } else {
+                quote! { #ename }
+            }
+        })
+        .collect();
+
+    // --- Display impl for event enum ---
+    let event_display_arms: Vec<TokenStream> = decl
+        .events
+        .iter()
+        .map(|evt| {
+            let ename = &evt.name;
+            let ename_str = ename.to_string();
+            if evt.input.is_some() {
+                quote! { Self::#ename(__x) => write!(f, "{}({})", #ename_str, __x) }
+            } else {
+                quote! { Self::#ename => write!(f, "{}", #ename_str) }
+            }
+        })
+        .collect();
 
     // --- Init body ---
-    // Parse init body field values and wrap nat-typed fields with .into()
     let init_body = {
         let init_tokens = &decl.init.body;
-        // Wrap as a struct expression so verus_syn can parse it
         let struct_tokens = quote! { #name { #init_tokens } };
         match verus_syn::parse2::<verus_syn::Expr>(struct_tokens) {
             Ok(verus_syn::Expr::Struct(s)) => {
@@ -366,7 +404,8 @@ pub fn expand_animate(decl: &MachineDecl) -> TokenStream {
                     .map(|f| {
                         let member = &f.member;
                         let value = transform_expr(&f.expr);
-                        // Check if this field is nat/int type and wrap with .into()
+                        // Wrap nat/int literals with `.into()` — user writes
+                        // `cars: 0` and we need `cars: 0i32.into()` to hit Nat.
                         let member_name = quote! { #member }.to_string();
                         let field_is_nat = decl.state_fields.iter().any(|sf| {
                             sf.name == member_name && is_nat_field(&sf.ty)
@@ -380,14 +419,14 @@ pub fn expand_animate(decl: &MachineDecl) -> TokenStream {
                     .collect();
                 quote! { #name { #(#fields,)* } }
             }
-            _ => {
-                // Fallback: just use the raw tokens
-                quote! { #name { #init_tokens } }
-            }
+            _ => quote! { #name { #init_tokens } },
         }
     };
 
-    // --- Guard match arms ---
+    // --- Guard / action match arms ---
+    // Destructure the variant payload so the input param name is bound inside
+    // the user's body. We clone the event once up front (cheap — inputs are
+    // small) so the body sees owned values even in `guard`.
     let guard_arms: Vec<_> = decl
         .events
         .iter()
@@ -396,8 +435,14 @@ pub fn expand_animate(decl: &MachineDecl) -> TokenStream {
             let guard_body = transform_body(&evt.guard.body);
             let ctx_name = &evt.guard.ctx_name;
             let state_name = &evt.guard.state_name;
+            let pattern = if let Some(ref param) = evt.input {
+                let pname = &param.name;
+                quote! { #event_enum_name::#ename(#pname) }
+            } else {
+                quote! { #event_enum_name::#ename }
+            };
             quote! {
-                #event_enum_name::#ename => {
+                #pattern => {
                     let #ctx_name = ctx;
                     let #state_name = state;
                     #guard_body
@@ -406,8 +451,6 @@ pub fn expand_animate(decl: &MachineDecl) -> TokenStream {
         })
         .collect();
 
-    // --- Action match arms ---
-    // Clone state so field accesses are on owned values (Nat isn't Copy).
     let action_arms: Vec<_> = decl
         .events
         .iter()
@@ -416,11 +459,144 @@ pub fn expand_animate(decl: &MachineDecl) -> TokenStream {
             let action_body = transform_body(&evt.action.body);
             let ctx_name = &evt.action.ctx_name;
             let state_name = &evt.action.state_name;
+            let pattern = if let Some(ref param) = evt.input {
+                let pname = &param.name;
+                quote! { #event_enum_name::#ename(#pname) }
+            } else {
+                quote! { #event_enum_name::#ename }
+            };
             quote! {
-                #event_enum_name::#ename => {
+                #pattern => {
                     let #ctx_name = ctx.clone();
                     let #state_name = state.clone();
                     #action_body
+                }
+            }
+        })
+        .collect();
+
+    // --- Output match arms ---
+    // For events with an `output` body, evaluate it on the pre-action state
+    // and format with Display. Events without an output contribute a `None`.
+    let output_arms: Vec<_> = decl
+        .events
+        .iter()
+        .map(|evt| {
+            let ename = &evt.name;
+            let pattern = if let Some(ref param) = evt.input {
+                let pname = &param.name;
+                quote! { #event_enum_name::#ename(#pname) }
+            } else {
+                quote! { #event_enum_name::#ename }
+            };
+            if let Some(ref out) = evt.output {
+                let out_body = transform_body(&out.body);
+                let ctx_name = &out.ctx_name;
+                let state_name = &out.state_name;
+                quote! {
+                    #pattern => {
+                        let #ctx_name = ctx.clone();
+                        let #state_name = state.clone();
+                        let __out = { #out_body };
+                        ::std::option::Option::Some(format!("{}", __out))
+                    }
+                }
+            } else {
+                quote! {
+                    #pattern => ::std::option::Option::None,
+                }
+            }
+        })
+        .collect();
+
+    // --- event_menu, construct_event, random_event ---
+    let menu_entries: Vec<TokenStream> = decl
+        .events
+        .iter()
+        .map(|evt| {
+            let ename_str = evt.name.to_string();
+            if let Some(ref param) = evt.input {
+                let pname_str = param.name.to_string();
+                let ty_label = type_kind_label(&param.ty);
+                quote! {
+                    verus_machine::animate::EventSpec {
+                        name: #ename_str,
+                        inputs: ::std::vec![
+                            verus_machine::animate::InputSpec {
+                                name: #pname_str,
+                                ty_kind: #ty_label,
+                            }
+                        ],
+                    }
+                }
+            } else {
+                quote! {
+                    verus_machine::animate::EventSpec {
+                        name: #ename_str,
+                        inputs: ::std::vec![],
+                    }
+                }
+            }
+        })
+        .collect();
+
+    let construct_arms: Vec<TokenStream> = decl
+        .events
+        .iter()
+        .map(|evt| {
+            let ename = &evt.name;
+            let ename_str = ename.to_string();
+            if let Some(ref param) = evt.input {
+                let ty = map_type_to_exec(&param.ty);
+                quote! {
+                    #ename_str => {
+                        if inputs.len() != 1 {
+                            return Err(format!(
+                                "{} expects 1 input, got {}",
+                                #ename_str,
+                                inputs.len()
+                            ));
+                        }
+                        let v: #ty =
+                            <#ty as verus_machine::exec_types::ParseInput>::parse_input(&inputs[0])?;
+                        Ok(#event_enum_name::#ename(v))
+                    }
+                }
+            } else {
+                quote! {
+                    #ename_str => {
+                        if !inputs.is_empty() {
+                            return Err(format!(
+                                "{} expects no inputs, got {}",
+                                #ename_str,
+                                inputs.len()
+                            ));
+                        }
+                        Ok(#event_enum_name::#ename)
+                    }
+                }
+            }
+        })
+        .collect();
+
+    let n_events = decl.events.len();
+    let random_arms: Vec<TokenStream> = decl
+        .events
+        .iter()
+        .enumerate()
+        .map(|(i, evt)| {
+            let ename = &evt.name;
+            let idx = i as u32;
+            if let Some(ref param) = evt.input {
+                let ty = map_type_to_exec(&param.ty);
+                quote! {
+                    #idx => #event_enum_name::#ename(
+                        <#ty as verus_machine::exec_types::Sample>::sample(rng)
+                    ),
+                }
+            } else {
+                quote! {
+                    #idx => #event_enum_name::#ename,
                 }
             }
         })
@@ -454,11 +630,34 @@ pub fn expand_animate(decl: &MachineDecl) -> TokenStream {
         }
     };
 
+    let n_events_lit = n_events as u32;
+    // If the machine has zero events, random_event can't produce anything.
+    // Generate a stub that panics — callers shouldn't reach it, but the type
+    // system needs the method to exist.
+    let random_event_body = if n_events == 0 {
+        quote! {
+            let _ = rng;
+            panic!("random_event called on a machine with no events");
+        }
+    } else {
+        quote! {
+            let __n = rand::Rng::gen_range(rng, 0u32..#n_events_lit);
+            match __n {
+                #(#random_arms)*
+                _ => unreachable!(),
+            }
+        }
+    };
+
     quote! {
         #[cfg(not(verus_only))]
-        #[allow(dead_code, unused_variables)]
+        #[allow(dead_code, unused_variables, unused_imports)]
         pub mod animate {
             use super::*;
+            // Shadow any spec-level Seq/Nat brought in via `use super::*;` so
+            // bodies like `Seq::empty()` / `state.size + 1` resolve to our
+            // exec types.
+            use verus_machine::exec_types::{IntoIdx, Nat, Seq};
 
             #exec_ctx_struct
 
@@ -477,15 +676,15 @@ pub fn expand_animate(decl: &MachineDecl) -> TokenStream {
 
             #aux_fn_exec_impl
 
-            #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+            #[derive(Debug, Clone, PartialEq)]
             pub enum #event_enum_name {
-                #(#event_names,)*
+                #(#event_variants,)*
             }
 
             impl ::std::fmt::Display for #event_enum_name {
                 fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                     match self {
-                        #(Self::#event_names => write!(f, #event_name_strs),)*
+                        #(#event_display_arms,)*
                     }
                 }
             }
@@ -499,19 +698,46 @@ pub fn expand_animate(decl: &MachineDecl) -> TokenStream {
                     #init_body
                 }
 
-                fn events() -> Vec<Self::Event> {
-                    vec![#(#event_enum_name::#event_names,)*]
+                fn event_menu() -> ::std::vec::Vec<verus_machine::animate::EventSpec> {
+                    ::std::vec![#(#menu_entries,)*]
                 }
 
-                fn guard(ctx: &Self::Ctx, state: &Self, event: Self::Event) -> bool {
+                fn construct_event(
+                    name: &str,
+                    inputs: &[::std::string::String],
+                ) -> ::std::result::Result<Self::Event, ::std::string::String> {
+                    match name {
+                        #(#construct_arms)*
+                        other => Err(format!("unknown event {:?}", other)),
+                    }
+                }
+
+                fn random_event<R: rand::Rng + ?Sized>(rng: &mut R) -> Self::Event {
+                    #random_event_body
+                }
+
+                fn guard(ctx: &Self::Ctx, state: &Self, event: &Self::Event) -> bool {
+                    let event = event.clone();
                     match event {
                         #(#guard_arms)*
                     }
                 }
 
-                fn action(ctx: &Self::Ctx, state: &Self, event: Self::Event) -> Self {
+                fn action(ctx: &Self::Ctx, state: &Self, event: &Self::Event) -> Self {
+                    let event = event.clone();
                     match event {
                         #(#action_arms)*
+                    }
+                }
+
+                fn output(
+                    ctx: &Self::Ctx,
+                    state: &Self,
+                    event: &Self::Event,
+                ) -> ::std::option::Option<::std::string::String> {
+                    let event = event.clone();
+                    match event {
+                        #(#output_arms)*
                     }
                 }
             }

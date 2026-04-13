@@ -2,6 +2,7 @@ use num::BigInt;
 use std::cmp::Ordering;
 use std::fmt;
 use std::ops::{Add, Sub};
+use std::str::FromStr;
 
 /// Executable representation of Verus `nat` — an arbitrary-precision non-negative integer.
 #[derive(Clone, Eq, PartialEq, Hash)]
@@ -212,5 +213,18 @@ impl From<u64> for Nat {
 impl From<usize> for Nat {
     fn from(val: usize) -> Self {
         Nat(BigInt::from(val))
+    }
+}
+
+// --- FromStr ---
+
+impl FromStr for Nat {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let bi: BigInt = s.parse().map_err(|e: num::bigint::ParseBigIntError| e.to_string())?;
+        if bi < BigInt::from(0) {
+            return Err("nat must be non-negative".into());
+        }
+        Ok(Nat(bi))
     }
 }

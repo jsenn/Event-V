@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream;
-use quote::{quote, quote_spanned};
+use quote::{format_ident, quote, quote_spanned};
 use syn::Path;
 
 use crate::parse::*;
@@ -103,6 +103,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
     let init_body = &decl.init.body;
     let init_span = init_ctx.span();
     let init_impl = quote_spanned! { init_span =>
+        #[allow(dead_code)]
         pub struct Initialize;
 
         impl Init<#name> for Initialize {
@@ -114,7 +115,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
                 }
             }
 
-            proof fn proof_safety(ctx: #ctx_type, _input: ()) {}
+            proof fn proof_safety(_ctx: #ctx_type, _input: ()) {}
         }
     };
 
@@ -173,8 +174,8 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
                     ctx
                 }
 
-                proof fn proof_lift_ctx_valid(ctx: Self::Context) {}
-                proof fn proof_lift_safe(ctx: Self::Context, state: Self) {}
+                proof fn proof_lift_ctx_valid(_ctx: Self::Context) {}
+                proof fn proof_lift_safe(_ctx: Self::Context, _state: Self) {}
             }
 
             #convergent_impl
@@ -182,7 +183,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             impl RefinedInit<#name, #abstract_init> for Initialize {
                 open spec fn lift_in(_input: ()) -> () { () }
 
-                proof fn proof_simulation(ctx: #ctx_type, _input: ()) {}
+                proof fn proof_simulation(_ctx: #ctx_type, _input: ()) {}
             }
         }
     } else {
@@ -343,6 +344,13 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
     } else {
         (quote! { () }, quote! { _input: () })
     };
+    let input_param_unused = if let Some(ref param) = evt.input {
+        let ty = &param.ty;
+        let prefixed = format_ident!("_{}", param.name);
+        quote! { #prefixed: #ty }
+    } else {
+        quote! { _input: () }
+    };
 
     // --- Output type ---
     let output_type = if let Some(ref ty) = evt.output_type {
@@ -371,12 +379,13 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
     };
 
     let event_struct = quote! {
+        #[allow(dead_code)]
         pub struct #event_name;
     };
 
-    let (safety_span, safety_body) = match &evt.safety_proof {
-        Some(p) => (p.span, { let b = &p.body; quote! { #b } }),
-        None => (event_name.span(), quote! {}),
+    let (safety_span, safety_body, safety_params) = match &evt.safety_proof {
+        Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { ctx: #ctx_type, state: #machine_name, #input_param }),
+        None => (event_name.span(), quote! {}, quote! { _ctx: #ctx_type, _state: #machine_name, #input_param_unused }),
     };
     let event_impl = quote_spanned! { safety_span =>
         impl Event<#machine_name> for #event_name {
@@ -393,7 +402,7 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
 
             #output_fn
 
-            proof fn proof_safety(ctx: #ctx_type, state: #machine_name, #input_param) {
+            proof fn proof_safety(#safety_params) {
                 #safety_body
             }
         }
@@ -446,13 +455,13 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
                 }
             };
 
-            let (_str_span, str_body) = match &evt.strengthening_proof {
-                Some(p) => (p.span, { let b = &p.body; quote! { #b } }),
-                None => (event_name.span(), quote! {}),
+            let (_str_span, str_body, str_params) = match &evt.strengthening_proof {
+                Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { ctx: #ctx_type, state: #machine_name, #input_param }),
+                None => (event_name.span(), quote! {}, quote! { _ctx: #ctx_type, _state: #machine_name, #input_param_unused }),
             };
-            let (_sim_span, sim_body) = match &evt.simulation_proof {
-                Some(p) => (p.span, { let b = &p.body; quote! { #b } }),
-                None => (event_name.span(), quote! {}),
+            let (_sim_span, sim_body, sim_params) = match &evt.simulation_proof {
+                Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { ctx: #ctx_type, state: #machine_name, #input_param }),
+                None => (event_name.span(), quote! {}, quote! { _ctx: #ctx_type, _state: #machine_name, #input_param_unused }),
             };
             let refined_span = evt.strengthening_proof.as_ref()
                 .or(evt.simulation_proof.as_ref())
@@ -463,10 +472,10 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
                     #lift_in_fn
                     #lift_out_fn
 
-                    proof fn proof_strengthening(ctx: #ctx_type, state: #machine_name, #input_param) {
+                    proof fn proof_strengthening(#str_params) {
                         #str_body
                     }
-                    proof fn proof_simulation(ctx: #ctx_type, state: #machine_name, #input_param) {
+                    proof fn proof_simulation(#sim_params) {
                         #sim_body
                     }
                 }
@@ -479,21 +488,21 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
     };
 
     let new_impl = if evt.concrete {
-        let (stut_span, stut_body) = match &evt.stuttering_proof {
-            Some(p) => (p.span, { let b = &p.body; quote! { #b } }),
-            None => (event_name.span(), quote! {}),
+        let (stut_span, stut_body, stut_params) = match &evt.stuttering_proof {
+            Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { ctx: #ctx_type, state: #machine_name, #input_param }),
+            None => (event_name.span(), quote! {}, quote! { _ctx: #ctx_type, _state: #machine_name, #input_param_unused }),
         };
-        let (conv_span, conv_body) = match &evt.convergence_proof {
-            Some(p) => (p.span, { let b = &p.body; quote! { #b } }),
-            None => (event_name.span(), quote! {}),
+        let (conv_span, conv_body, conv_params) = match &evt.convergence_proof {
+            Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { ctx: #ctx_type, state: #machine_name, #input_param }),
+            None => (event_name.span(), quote! {}, quote! { _ctx: #ctx_type, _state: #machine_name, #input_param_unused }),
         };
         let conv_method = quote_spanned! { conv_span =>
-            proof fn proof_convergent(ctx: #ctx_type, state: #machine_name, #input_param) {
+            proof fn proof_convergent(#conv_params) {
                 #conv_body
             }
         };
         let stut_method = quote_spanned! { stut_span =>
-            proof fn proof_stuttering(ctx: #ctx_type, state: #machine_name, #input_param) {
+            proof fn proof_stuttering(#stut_params) {
                 #stut_body
             }
         };

@@ -16,10 +16,6 @@ deadlock_free machine Ref1 refines abs::Abs {
         cars_to_mainland: nat,
     }
 
-    fn total_cars(state) -> nat {
-        state.cars_to_island + state.cars_on_island + state.cars_to_mainland
-    }
-
     init(ctx) {
         cars_to_island: 0,
         cars_on_island: 0,
@@ -33,7 +29,12 @@ deadlock_free machine Ref1 refines abs::Abs {
     }
 
     invariant(ctx, state) {
-        state.cars_to_island == 0 || state.cars_to_mainland == 0
+        ||| state.cars_to_island == 0
+        ||| state.cars_to_mainland == 0
+    }
+
+    variant(ctx, state) -> (nat, nat) {
+        (state.cars_to_island, state.cars_on_island)
     }
 
     refined event MainlandIn {
@@ -63,7 +64,7 @@ deadlock_free machine Ref1 refines abs::Abs {
         }
     }
 
-    concrete convergent event IslandIn {
+    concrete event IslandIn {
         guard(ctx, state) {
             state.cars_to_island > 0
         }
@@ -75,13 +76,9 @@ deadlock_free machine Ref1 refines abs::Abs {
                 ..state
             }
         }
-
-        variant(ctx, state) {
-            state.cars_to_island
-        }
     }
 
-    concrete convergent event IslandOut {
+    concrete event IslandOut {
         guard(ctx, state) {
             &&& state.cars_on_island > 0
             &&& state.cars_to_island == 0
@@ -94,10 +91,16 @@ deadlock_free machine Ref1 refines abs::Abs {
                 ..state
             }
         }
+    }
+}
 
-        variant(ctx, state) {
-            state.cars_on_island
-        }
+}
+
+verus! {
+
+impl Ref1 {
+    pub open spec fn total_cars(&self) -> nat {
+        self.cars_to_island + self.cars_on_island + self.cars_to_mainland
     }
 }
 

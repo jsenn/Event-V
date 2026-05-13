@@ -24,9 +24,9 @@ impl State {
 }
 
 impl Machine for State {
-    type Ctx = buf0::Ctx;
+    type Context = buf0::Ctx;
 
-    open spec fn inv(ctx: Self::Ctx, state: Self) -> bool {
+    open spec fn inv(ctx: Self::Context, state: Self) -> bool {
         state.validate(ctx)
     }
 }
@@ -34,10 +34,10 @@ impl Machine for State {
 impl Refinement for State {
     type Abstract = buf0::State;
 
-    open spec fn lift_ctx(ctx: Self::Ctx) -> buf0::Ctx { ctx }
+    open spec fn lift_ctx(ctx: Self::Context) -> buf0::Ctx { ctx }
 
-    proof fn proof_lift_ctx_valid(ctx: Self::Ctx) {}
-    proof fn proof_lift_safe(ctx: Self::Ctx, state: Self) {}
+    proof fn proof_lift_ctx_valid(ctx: Self::Context) {}
+    proof fn proof_lift_safe(ctx: Self::Context, state: Self) {}
 }
 
 /// Initialization: empty buffer.

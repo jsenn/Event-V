@@ -48,9 +48,9 @@ impl State {
 }
 
 impl Machine for State {
-    type Ctx = BridgeCtx;
+    type Context = BridgeCtx;
 
-    open spec fn inv(ctx: Self::Ctx, state: Self) -> bool {
+    open spec fn inv(ctx: Self::Context, state: Self) -> bool {
         state.validate(ctx)
     }
 }
@@ -79,12 +79,20 @@ impl Init<State> for Initialize {
 impl Refinement for State {
     type Abstract = ref1::State;
 
-    open spec fn lift_ctx(ctx: Self::Ctx) -> BridgeCtx {
+    open spec fn lift_ctx(ctx: Self::Context) -> BridgeCtx {
         ctx
     }
 
-    proof fn proof_lift_ctx_valid(ctx: Self::Ctx) {}
-    proof fn proof_lift_safe(ctx: Self::Ctx, state: Self) {}
+    proof fn proof_lift_ctx_valid(ctx: Self::Context) {}
+    proof fn proof_lift_safe(ctx: Self::Context, state: Self) {}
+}
+
+impl ConvergentRefinement for State {
+    type Variant = (bool, bool);
+
+    open spec fn variant(_ctx: Self::Context, state: Self) -> Self::Variant {
+        (state.car_left_island, state.car_left_mainland)
+    }
 }
 
 impl RefinedInit<State, ref1::Initialize> for Initialize {
@@ -251,15 +259,8 @@ impl Event<State> for TurnGreenMainland {
     proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
-impl ConvergentEvent<State> for TurnGreenMainland {
-    open spec fn variant(ctx: BridgeCtx, state: State) -> nat {
-        (state.car_left_island as nat) + (state.car_left_mainland as nat)
-    }
-
-    proof fn proof_convergence(ctx: BridgeCtx, state: State, _input: ()) {}
-}
-
 impl NewEvent<State> for TurnGreenMainland {
+    proof fn proof_convergent(ctx: BridgeCtx, state: State, _input: ()) {}
     proof fn proof_stuttering(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
@@ -289,15 +290,8 @@ impl Event<State> for TurnGreenIsland {
     proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
-impl ConvergentEvent<State> for TurnGreenIsland {
-    open spec fn variant(ctx: BridgeCtx, state: State) -> nat {
-        (state.car_left_island as nat) + (state.car_left_mainland as nat)
-    }
-
-    proof fn proof_convergence(ctx: BridgeCtx, state: State, _input: ()) {}
-}
-
 impl NewEvent<State> for TurnGreenIsland {
+    proof fn proof_convergent(ctx: BridgeCtx, state: State, _input: ()) {}
     proof fn proof_stuttering(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 

@@ -17,9 +17,9 @@ impl State {
 }
 
 impl Machine for State {
-    type Ctx = BridgeCtx;
+    type Context = BridgeCtx;
 
-    open spec fn inv(ctx: Self::Ctx, state: Self) -> bool {
+    open spec fn inv(ctx: Self::Context, state: Self) -> bool {
         state.validate(ctx)
     }
 }

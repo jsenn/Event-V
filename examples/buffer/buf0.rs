@@ -27,9 +27,9 @@ impl State {
 }
 
 impl Machine for State {
-    type Ctx = Ctx;
+    type Context = Ctx;
 
-    open spec fn inv(ctx: Self::Ctx, state: Self) -> bool {
+    open spec fn inv(ctx: Self::Context, state: Self) -> bool {
         state.validate(ctx)
     }
 }

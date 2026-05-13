@@ -34,9 +34,9 @@ impl State {
 }
 
 impl Machine for State {
-    type Ctx = BridgeCtx;
+    type Context = BridgeCtx;
 
-    open spec fn inv(ctx: Self::Ctx, state: Self) -> bool {
+    open spec fn inv(ctx: Self::Context, state: Self) -> bool {
         state.validate(ctx)
     }
 }
@@ -59,12 +59,20 @@ impl Init<State> for Initialize {
 impl Refinement for State {
     type Abstract = abs::State;
 
-    open spec fn lift_ctx(ctx: Self::Ctx) -> <Self::Abstract as Machine>::Ctx {
+    open spec fn lift_ctx(ctx: Self::Context) -> <Self::Abstract as Machine>::Context {
         ctx
     }
 
-    proof fn proof_lift_ctx_valid(ctx: Self::Ctx) {}
-    proof fn proof_lift_safe(ctx: Self::Ctx, state: Self) {}
+    proof fn proof_lift_ctx_valid(ctx: Self::Context) {}
+    proof fn proof_lift_safe(ctx: Self::Context, state: Self) {}
+}
+
+impl ConvergentRefinement for State {
+    type Variant = (nat, nat);
+
+    open spec fn variant(ctx: BridgeCtx, state: State) -> Self::Variant {
+        (state.cars_to_island, state.cars_on_island)
+    }
 }
 
 impl RefinedInit<State, abs::Initialize> for Initialize {
@@ -154,15 +162,8 @@ impl Event<State> for IslandIn {
     proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
-impl ConvergentEvent<State> for IslandIn {
-    open spec fn variant(ctx: BridgeCtx, state: State) -> nat {
-        state.cars_to_island
-    }
-
-    proof fn proof_convergence(ctx: BridgeCtx, state: State, _input: ()) {}
-}
-
 impl NewEvent<State> for IslandIn {
+    proof fn proof_convergent(ctx: BridgeCtx, state: State, _input: ()) {}
     proof fn proof_stuttering(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
@@ -190,15 +191,8 @@ impl Event<State> for IslandOut {
     proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 
-impl ConvergentEvent<State> for IslandOut {
-    open spec fn variant(ctx: BridgeCtx, state: State) -> nat {
-        state.cars_on_island
-    }
-
-    proof fn proof_convergence(ctx: BridgeCtx, state: State, _input: ()) {}
-}
-
 impl NewEvent<State> for IslandOut {
+    proof fn proof_convergent(ctx: BridgeCtx, state: State, _input: ()) {}
     proof fn proof_stuttering(ctx: BridgeCtx, state: State, _input: ()) {}
 }
 

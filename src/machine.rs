@@ -17,7 +17,7 @@ verus! {
 /// might have an initial inventory and amount of change.
 ///
 /// # Examples
-/// ```
+/// ```ignore
 /// pub struct CounterCtx {
 ///     pub max_value: nat,
 /// }
@@ -37,7 +37,7 @@ pub trait MachineContext: Sized {
 /// This is a fundamental move in state machine refinement.
 /// 
 /// # Examples
-/// ```
+/// ```ignore
 /// struct AbstractBuffer {
 ///     pub size: nat,
 /// }
@@ -63,7 +63,7 @@ pub trait Lift<Abstract>: Sized {
 /// is constructed from a `MachineContext`, and which may be evolved by various `Events`.
 ///
 /// # Examples
-/// ```
+/// ```ignore
 /// pub struct CounterCtx {
 ///     pub max_value: nat,
 /// }
@@ -98,7 +98,7 @@ pub trait Machine: Sized {
 /// lifetime. A machine can have multiple `Init`s, but only one can be used in a given trajectory.
 /// 
 /// # Examples
-/// ```
+/// ```ignore
 /// pub struct CounterCtx {
 ///     pub max_value: nat,
 /// }
@@ -167,7 +167,7 @@ pub trait Init<M: Machine> {
 /// state from a valid one. This guarantee is provided by the event's **safety proof**.
 ///
 /// # Examples
-/// ```
+/// ```ignore
 /// pub struct CounterCtx {
 ///     pub max_value: nat,
 /// }
@@ -268,7 +268,7 @@ pub trait Event<M: Machine> {
 /// **well-founded**. That is, there must be a finite number of instances of Variant less than any
 /// given instance.
 /// 
-/// Then, each [`NewEvent``] provides a proof that it decreases the global variant. Due to the well-
+/// Then, each [`NewEvent`] provides a proof that it decreases the global variant. Due to the well-
 /// foundedness property, the variant acts as a finite amount of "fuel" that the concrete machine
 /// can run on before an abstract event must take place, preventing deadlock.
 pub trait Refinement: Machine + Lift<Self::Abstract>

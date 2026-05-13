@@ -8,6 +8,7 @@ edition = "2021"
 
 [dependencies]
 vstd = { path = "../verus-src/source/vstd" }
+verus_builtin_macros = { path = "../verus-src/source/builtin_macros" }
 verus-machine-macros = { path = "macros" }
 num = "0.4"
 rand = "0.8"

@@ -5,6 +5,8 @@
 
 use vstd::prelude::*;
 
+use crate::lex_lt::LexLt;
+
 verus! {
 
 /// Defines the requirements of a machine's `Context` type. The context contains all the
@@ -79,17 +81,17 @@ pub trait Lift<Abstract>: Sized {
 /// impl Machine for Counter {
 ///     type Ctx = Ctx;
 ///
-///     open spec fn inv(ctx: Self::Ctx, state: Self) -> bool {
+///     open spec fn inv(ctx: Self::Context, state: Self) -> bool {
 ///         self.value <= ctx.max_value
 ///     }
 /// }
 /// ```
 pub trait Machine: Sized {
     /// The type of the context object for this machine
-    type Ctx: MachineContext;
+    type Context: MachineContext;
 
     /// The machine's **invariant** defines what it means for the machine to be in a valid state.
-    spec fn inv(ctx: Self::Ctx, state: Self) -> bool;
+    spec fn inv(ctx: Self::Context, state: Self) -> bool;
 }
 
 /// The `Init` trait represents a special event that runs once at the beginning of a machine's
@@ -112,9 +114,9 @@ pub trait Machine: Sized {
 /// }
 ///
 /// impl Machine for Counter {
-///     type Ctx = Ctx;
+///     type Context = CounterCtx;
 ///
-///     open spec fn inv(ctx: Self::Ctx, state: Self) -> bool {
+///     open spec fn inv(ctx: Self::Context, state: Self) -> bool {
 ///         self.value <= ctx.max_value
 ///     }
 /// }
@@ -147,11 +149,11 @@ pub trait Init<M: Machine> {
     type Input;
 
     /// Produce a `Machine` instance given a context and an input.
-    spec fn init(ctx: M::Ctx, input: Self::Input) -> M;
+    spec fn init(ctx: M::Context, input: Self::Input) -> M;
 
     /// Prove that given a valid context and input, the machine is well-formed after
     /// initialization.
-    proof fn proof_safety(ctx: M::Ctx, input: Self::Input)
+    proof fn proof_safety(ctx: M::Context, input: Self::Input)
         requires ctx.valid(),
         ensures M::inv(ctx, Self::init(ctx, input));
 }
@@ -181,9 +183,9 @@ pub trait Init<M: Machine> {
 /// }
 ///
 /// impl Machine for Counter {
-///     type Ctx = Ctx;
+///     type Context = Ctx;
 ///
-///     open spec fn inv(ctx: Self::Ctx, state: Self) -> bool {
+///     open spec fn inv(ctx: Self::Context, state: Self) -> bool {
 ///         self.value <= ctx.max_value
 ///     }
 /// }
@@ -227,17 +229,17 @@ pub trait Event<M: Machine> {
     type Output;
 
     /// Determine whether this event is allowed to fire in a given state and for a given input.
-    spec fn guard(ctx: M::Ctx, state: M, input: Self::Input) -> bool;
+    spec fn guard(ctx: M::Context, state: M, input: Self::Input) -> bool;
 
     /// Specify how this event transforms the current state into the next state given an input.
-    spec fn action(ctx: M::Ctx, state: M, input: Self::Input) -> M;
+    spec fn action(ctx: M::Context, state: M, input: Self::Input) -> M;
 
     /// Produce an output given the current state and the event's input.
-    spec fn output(ctx: M::Ctx, state: M, input: Self::Input) -> Self::Output;
+    spec fn output(ctx: M::Context, state: M, input: Self::Input) -> Self::Output;
 
     /// Prove that this event can never transform a valid state into an invalid one, so long as the
     /// event's guard is satisfied.
-    proof fn proof_safety(ctx: M::Ctx, state: M, input: Self::Input)
+    proof fn proof_safety(ctx: M::Context, state: M, input: Self::Input)
         requires
             ctx.valid(),
             M::inv(ctx, state),
@@ -258,28 +260,55 @@ pub trait Event<M: Machine> {
 /// 1. That the `lift_ctx` function maps a valid concrete context onto a valid abstract one; and
 /// 2. That `lift`ing a valid concrete state into an abstract state preserves the abstract
 ///    machine's invariant.
+/// 
+/// A concrete machine may also include new events that do not have an abstract counterpart. This
+/// is only safe if the refinement can prove that the abstract machine will eventually be allowed
+/// to make progress--otherwise a concrete machine could deadlock its abstract equivalent. To do
+/// this, the refinement must provide a **Variant** type and a function variant(). Variant must be
+/// **well-founded**. That is, there must be a finite number of instances of Variant less than any
+/// given instance.
+/// 
+/// Then, each [`NewEvent``] provides a proof that it decreases the global variant. Due to the well-
+/// foundedness property, the variant acts as a finite amount of "fuel" that the concrete machine
+/// can run on before an abstract event must take place, preventing deadlock.
 pub trait Refinement: Machine + Lift<Self::Abstract>
 {
     /// The abstract machine being refined
     type Abstract: Machine;
 
     /// Produce an abstract context given a concrete one.
-    spec fn lift_ctx(ctx: Self::Ctx) -> <Self::Abstract as Machine>::Ctx;
+    spec fn lift_ctx(ctx: Self::Context) -> <Self::Abstract as Machine>::Context;
 
     /// Prove that `lift_ctx` always produces a valid abstract context given a valid concrete one.
-    proof fn proof_lift_ctx_valid(ctx: Self::Ctx)
+    proof fn proof_lift_ctx_valid(ctx: Self::Context)
         requires
             ctx.valid(),
         ensures
             Self::lift_ctx(ctx).valid();
 
     /// Prove that lifting a valid concrete state produces a valid abstract state.
-    proof fn proof_lift_safe(ctx: Self::Ctx, state: Self)
+    proof fn proof_lift_safe(ctx: Self::Context, state: Self)
         requires
             ctx.valid(),
             Self::inv(ctx, state),
         ensures
             Self::Abstract::inv(Self::lift_ctx(ctx), state.lift());
+}
+
+/// A refinement that supplies a well-founded variant so that concrete events (those without an
+/// abstract counterpart) can be proven to converge. Implement this in addition to [`Refinement`]
+/// whenever the refinement introduces [`NewEvent`]s.
+pub trait ConvergentRefinement: Refinement {
+    /// The variant type for this refinement. This must be a type that is well-ordered and
+    /// well-founded. In other words, every Variant instance must be comparable with every
+    /// other one, and there must be no way to create an infinite chain of values where each
+    /// value in the chain is less than the previous one.
+    type Variant: LexLt;
+
+    /// Map a machine state onto a variant value. Every event in the concrete machine that has no
+    /// abstract equivalent must decrease this variant. This prevents a concrete refinement from
+    /// deadlocking its abstract equivalent.
+    spec fn variant(ctx: Self::Context, state: Self) -> Self::Variant;
 }
 
 /// A `RefinedInit` maps a concrete initialization event to an abstract one. It must specify how to
@@ -294,7 +323,7 @@ pub trait RefinedInit<M: Refinement, Abstract: Init<M::Abstract>>: Init<M> {
     /// Prove that applying the concrete initialization then lifting it to an abstract state
     /// produces the same result as applying the abstract initialization to the lifted concrete
     /// input.
-    proof fn proof_simulation(ctx: M::Ctx, input: Self::Input)
+    proof fn proof_simulation(ctx: M::Context, input: Self::Input)
         requires
             ctx.valid(),
         ensures
@@ -317,7 +346,7 @@ pub trait RefinedEvent<M: Refinement, Abstract: Event<M::Abstract>>: Event<M> {
     spec fn lift_out(output: Self::Output) -> Abstract::Output;
 
     /// Prove that the concrete guard cannot be enabled when the abstract guard is not.
-    proof fn proof_strengthening(ctx: M::Ctx, state: M, input: Self::Input)
+    proof fn proof_strengthening(ctx: M::Context, state: M, input: Self::Input)
         requires
             ctx.valid(),
             M::inv(ctx, state),
@@ -327,7 +356,7 @@ pub trait RefinedEvent<M: Refinement, Abstract: Event<M::Abstract>>: Event<M> {
 
     /// Prove that applying the concrete event then lifting the result to an abstract machine state
     /// is equivalent to applying the *abstract* event to the lifted concrete state and input.
-    proof fn proof_simulation(ctx: M::Ctx, state: M, input: Self::Input)
+    proof fn proof_simulation(ctx: M::Context, state: M, input: Self::Input)
         requires
             ctx.valid(),
             M::inv(ctx, state),
@@ -338,35 +367,24 @@ pub trait RefinedEvent<M: Refinement, Abstract: Event<M::Abstract>>: Event<M> {
             Self::lift_out(Self::output(ctx, state, input)) == Abstract::output(M::lift_ctx(ctx), state.lift(), Self::lift_in(input));
 }
 
-/// A `ConvergentEvent` is an event that can only fire a finite number of times in a row. It has 2
-/// components:
-/// 1. A **variant**, which is a function that maps a machine state to a natural number; and
-/// 2. A **convergence proof**, which guarantees that the variant decreases after applying the
-///    event.
-/// 
-/// Because natural numbers cannot go below 0, a variant together with a convergence proof
-/// guarantees that the event will eventually stop firing.
-pub trait ConvergentEvent<M: Machine>: Event<M> {
-    /// Map a machine state onto a natural number. The variant must decrease after the event fires.
-    spec fn variant(ctx: M::Ctx, state: M) -> nat;
-
-    /// Prove that the variant decreases after the event's action takes place, guaranteeing that
-    /// the event cannot keep firing indefinitely.
-    proof fn proof_convergence(ctx: M::Ctx, state: M, input: Self::Input)
+/// A `NewEvent` is one that appears in a concrete machine which has no counterpart in an abstract
+/// machine. A new event must satisfy 2 properties:
+/// 1. **Convergence**: the event must decrease the [`Refinement`]'s variant, to prevent new events
+///    from deadlocking the abstract machine; and
+/// 2. **Stuttering**: the event must not change the abstract representation of the state.
+pub trait NewEvent<M: ConvergentRefinement>: Event<M> {
+    proof fn proof_convergent(ctx: M::Context, state: M, input: Self::Input)
         requires
             ctx.valid(),
             M::inv(ctx, state),
             Self::guard(ctx, state, input),
         ensures
-            Self::variant(ctx, Self::action(ctx, state, input)) < Self::variant(ctx, state);
-}
+            <M::Variant as LexLt>::lex_lt(
+                M::variant(ctx, Self::action(ctx, state, input)),
+                M::variant(ctx, state));
 
-/// A `NewEvent` is one that appears in a concrete machine which has no counterpart in an abstract
-/// machine. A new event must be convergent so that the concrete machine cannot "deadlock" the
-/// abstract machine by firing off its new events indefinitely.
-pub trait NewEvent<M: Refinement>: ConvergentEvent<M> {
     /// Prove that applying the concrete event does not change the lifted abstract state.
-    proof fn proof_stuttering(ctx: M::Ctx, state: M, input: Self::Input)
+    proof fn proof_stuttering(ctx: M::Context, state: M, input: Self::Input)
         requires
             ctx.valid(),
             M::inv(ctx, state),
@@ -389,7 +407,7 @@ pub trait MirrorContext<Spec: MachineContext>: Sized {
 /// A `Mirror` is an executable type that simulates a `Machine`, which is a spec type.
 pub trait Mirror<Spec: Machine>: Lift<Spec> {
     /// The executable context type
-    type ExecCtx: MirrorContext<Spec::Ctx>;
+    type ExecCtx: MirrorContext<Spec::Context>;
 }
 
 /// `MirrorEvent` captures the relationship between an executable implementation of an event and

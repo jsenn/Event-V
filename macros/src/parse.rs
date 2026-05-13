@@ -25,7 +25,11 @@ mod kw {
     syn::custom_keyword!(lift_out);
     syn::custom_keyword!(refined);
     syn::custom_keyword!(concrete);
-    syn::custom_keyword!(convergent);
+    syn::custom_keyword!(safety_proof);
+    syn::custom_keyword!(strengthening_proof);
+    syn::custom_keyword!(simulation_proof);
+    syn::custom_keyword!(convergence_proof);
+    syn::custom_keyword!(stuttering_proof);
 }
 
 pub enum CtxDecl {
@@ -56,17 +60,28 @@ impl CtxDecl {
     }
 }
 
+pub struct MacroInput {
+    pub machine: Option<MachineDecl>,
+}
+
 pub struct MachineDecl {
     pub deadlock_free: bool,
     pub name: Ident,
     pub refines: Option<Path>,
     pub ctx: CtxDecl,
     pub state_fields: Vec<StateField>,
-    pub aux_fns: Vec<AuxFnDecl>,
     pub init: InitDecl,
     pub lift: Option<LiftDecl>,
     pub invariant: Option<InvariantDecl>,
+    pub variant: Option<VariantDecl>,
     pub events: Vec<EventDecl>,
+}
+
+pub struct VariantDecl {
+    pub ctx_name: Ident,
+    pub state_name: Ident,
+    pub ret_type: Type,
+    pub body: TokenStream,
 }
 
 pub struct StateField {
@@ -103,28 +118,25 @@ pub struct LiftFn {
 pub struct EventDecl {
     pub refined: bool,
     pub concrete: bool,
-    pub convergent: bool,
     pub name: Ident,
     pub input: Option<EventParam>,
     pub output_type: Option<Type>,
     pub guard: FnBody,
     pub action: FnBody,
     pub output: Option<FnBody>,
-    pub variant: Option<FnBody>,
     pub lift_in: Option<LiftFn>,
     pub lift_out: Option<LiftFn>,
+    pub safety_proof: Option<FnBody>,
+    pub strengthening_proof: Option<FnBody>,
+    pub simulation_proof: Option<FnBody>,
+    pub convergence_proof: Option<FnBody>,
+    pub stuttering_proof: Option<FnBody>,
 }
 
 pub struct FnBody {
+    pub span: proc_macro2::Span,
     pub ctx_name: Ident,
     pub state_name: Ident,
-    pub body: TokenStream,
-}
-
-pub struct AuxFnDecl {
-    pub name: Ident,
-    pub state_name: Ident,
-    pub ret_type: Type,
     pub body: TokenStream,
 }
 
@@ -137,7 +149,7 @@ impl Parse for StateField {
     }
 }
 
-fn parse_fn_body(input: ParseStream) -> Result<FnBody> {
+fn parse_fn_body(input: ParseStream, span: proc_macro2::Span) -> Result<FnBody> {
     let params;
     parenthesized!(params in input);
     let ctx_name: Ident = params.parse()?;
@@ -147,6 +159,7 @@ fn parse_fn_body(input: ParseStream) -> Result<FnBody> {
     braced!(body_content in input);
     let body: TokenStream = body_content.parse()?;
     Ok(FnBody {
+        span,
         ctx_name,
         state_name,
         body,
@@ -156,7 +169,6 @@ fn parse_fn_body(input: ParseStream) -> Result<FnBody> {
 fn parse_event(content: ParseStream) -> Result<EventDecl> {
     let mut refined = false;
     let mut concrete = false;
-    let mut convergent = false;
 
     // Parse optional modifiers before 'event'
     while !content.peek(kw::event) {
@@ -166,11 +178,8 @@ fn parse_event(content: ParseStream) -> Result<EventDecl> {
         } else if content.peek(kw::concrete) {
             content.parse::<kw::concrete>()?;
             concrete = true;
-        } else if content.peek(kw::convergent) {
-            content.parse::<kw::convergent>()?;
-            convergent = true;
         } else {
-            return Err(content.error("expected 'event', 'refined', 'concrete', or 'convergent'"));
+            return Err(content.error("expected 'event', 'refined', or 'concrete'"));
         }
     }
 
@@ -203,23 +212,24 @@ fn parse_event(content: ParseStream) -> Result<EventDecl> {
     let mut guard = None;
     let mut action = None;
     let mut output = None;
-    let mut variant = None;
     let mut lift_in = None;
     let mut lift_out = None;
+    let mut safety_proof = None;
+    let mut strengthening_proof = None;
+    let mut simulation_proof = None;
+    let mut convergence_proof = None;
+    let mut stuttering_proof = None;
 
     while !event_content.is_empty() {
         if event_content.peek(kw::guard) {
-            event_content.parse::<kw::guard>()?;
-            guard = Some(parse_fn_body(&event_content)?);
+            let kw = event_content.parse::<kw::guard>()?;
+            guard = Some(parse_fn_body(&event_content, kw.span)?);
         } else if event_content.peek(kw::action) {
-            event_content.parse::<kw::action>()?;
-            action = Some(parse_fn_body(&event_content)?);
+            let kw = event_content.parse::<kw::action>()?;
+            action = Some(parse_fn_body(&event_content, kw.span)?);
         } else if event_content.peek(kw::output) {
-            event_content.parse::<kw::output>()?;
-            output = Some(parse_fn_body(&event_content)?);
-        } else if event_content.peek(kw::variant) {
-            event_content.parse::<kw::variant>()?;
-            variant = Some(parse_fn_body(&event_content)?);
+            let kw = event_content.parse::<kw::output>()?;
+            output = Some(parse_fn_body(&event_content, kw.span)?);
         } else if event_content.peek(kw::lift_in) {
             event_content.parse::<kw::lift_in>()?;
             let params;
@@ -238,9 +248,24 @@ fn parse_event(content: ParseStream) -> Result<EventDecl> {
             braced!(body_content in event_content);
             let body: TokenStream = body_content.parse()?;
             lift_out = Some(LiftFn { param_name, body });
+        } else if event_content.peek(kw::safety_proof) {
+            let kw = event_content.parse::<kw::safety_proof>()?;
+            safety_proof = Some(parse_fn_body(&event_content, kw.span)?);
+        } else if event_content.peek(kw::strengthening_proof) {
+            let kw = event_content.parse::<kw::strengthening_proof>()?;
+            strengthening_proof = Some(parse_fn_body(&event_content, kw.span)?);
+        } else if event_content.peek(kw::simulation_proof) {
+            let kw = event_content.parse::<kw::simulation_proof>()?;
+            simulation_proof = Some(parse_fn_body(&event_content, kw.span)?);
+        } else if event_content.peek(kw::convergence_proof) {
+            let kw = event_content.parse::<kw::convergence_proof>()?;
+            convergence_proof = Some(parse_fn_body(&event_content, kw.span)?);
+        } else if event_content.peek(kw::stuttering_proof) {
+            let kw = event_content.parse::<kw::stuttering_proof>()?;
+            stuttering_proof = Some(parse_fn_body(&event_content, kw.span)?);
         } else {
             return Err(event_content.error(
-                "expected 'guard', 'action', 'output', 'variant', 'lift_in', or 'lift_out'",
+                "expected 'guard', 'action', 'output', 'lift_in', 'lift_out', or proof block",
             ));
         }
     }
@@ -249,17 +274,31 @@ fn parse_event(content: ParseStream) -> Result<EventDecl> {
     Ok(EventDecl {
         refined,
         concrete,
-        convergent,
         name,
         input,
         output_type,
         guard: guard.ok_or_else(|| syn::Error::new(name_span, "event missing 'guard'"))?,
         action: action.ok_or_else(|| syn::Error::new(name_span, "event missing 'action'"))?,
         output,
-        variant,
         lift_in,
         lift_out,
+        safety_proof,
+        strengthening_proof,
+        simulation_proof,
+        convergence_proof,
+        stuttering_proof,
     })
+}
+
+impl Parse for MacroInput {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let machine = if input.is_empty() {
+            None
+        } else {
+            Some(input.parse::<MachineDecl>()?)
+        };
+        Ok(MacroInput { machine })
+    }
 }
 
 impl Parse for MachineDecl {
@@ -312,10 +351,10 @@ impl Parse for MachineDecl {
 
         // Parse remaining items in any order
         let mut state_fields = None;
-        let mut aux_fns = Vec::new();
         let mut init = None;
         let mut lift = None;
         let mut invariant = None;
+        let mut variant = None;
         let mut events = Vec::new();
 
         while !content.is_empty() {
@@ -337,23 +376,6 @@ impl Parse for MachineDecl {
                         ));
                     }
                 }
-            } else if content.peek(Token![fn]) {
-                content.parse::<Token![fn]>()?;
-                let fn_name: Ident = content.parse()?;
-                let params;
-                parenthesized!(params in content);
-                let state_name: Ident = params.parse()?;
-                content.parse::<Token![->]>()?;
-                let ret_type: Type = content.parse()?;
-                let body_content;
-                braced!(body_content in content);
-                let body: TokenStream = body_content.parse()?;
-                aux_fns.push(AuxFnDecl {
-                    name: fn_name,
-                    state_name,
-                    ret_type,
-                    body,
-                });
             } else if content.peek(kw::state) {
                 content.parse::<kw::state>()?;
                 let state_content;
@@ -394,15 +416,32 @@ impl Parse for MachineDecl {
                     state_name,
                     body,
                 });
+            } else if content.peek(kw::variant) {
+                content.parse::<kw::variant>()?;
+                let params;
+                parenthesized!(params in content);
+                let ctx_name: Ident = params.parse()?;
+                params.parse::<Token![,]>()?;
+                let state_name: Ident = params.parse()?;
+                content.parse::<Token![->]>()?;
+                let ret_type: Type = content.parse()?;
+                let body_content;
+                braced!(body_content in content);
+                let body: TokenStream = body_content.parse()?;
+                variant = Some(VariantDecl {
+                    ctx_name,
+                    state_name,
+                    ret_type,
+                    body,
+                });
             } else if content.peek(kw::event)
                 || content.peek(kw::refined)
                 || content.peek(kw::concrete)
-                || content.peek(kw::convergent)
             {
                 events.push(parse_event(&content)?);
             } else {
                 return Err(content.error(
-                    "expected 'state', 'fn', 'valid', 'init', 'lift', 'invariant', or event declaration",
+                    "expected 'state', 'valid', 'init', 'lift', 'invariant', 'variant', or event declaration",
                 ));
             }
         }
@@ -414,10 +453,10 @@ impl Parse for MachineDecl {
             refines,
             ctx,
             state_fields: state_fields.unwrap_or_default(),
-            aux_fns,
             init: init.ok_or_else(|| syn::Error::new(name_span, "missing 'init' block"))?,
             lift,
             invariant,
+            variant,
             events,
         })
     }

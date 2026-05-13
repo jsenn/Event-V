@@ -8,6 +8,9 @@
 /// The `machine` module contains the trait machinery underlying `verus_machine`.
 pub mod machine;
 
+/// The `lex_lt` module defines the [`lex_lt::LexLt`] trait and some standard impls.
+pub mod lex_lt;
+
 /// The `animate` module contains some plumbing to interactively debug state machines.
 pub mod animate;
 

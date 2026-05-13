@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{quote, quote_spanned};
 use syn::Path;
 
 use crate::parse::*;
@@ -18,6 +18,18 @@ fn abstract_event_path(refines_path: &Path, event_name: &syn::Ident) -> TokenStr
 pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
     let name = &decl.name;
     let ctx_type = decl.ctx.spec_type();
+
+    if decl.refines.is_none() {
+        if let Some(evt) = decl.events.iter().find(|e| e.concrete) {
+            return syn::Error::new(
+                evt.name.span(),
+                "'concrete' events may only appear in a machine that 'refines' another \
+                 (a concrete event is one introduced by a refinement that has no abstract counterpart); \
+                 either remove 'concrete' or add 'refines <abstract>' to the machine header",
+            )
+            .to_compile_error();
+        }
+    }
 
     // --- State struct ---
     let field_defs: Vec<_> = decl
@@ -78,9 +90,9 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
     // --- Machine impl (no longer contains init) ---
     let machine_impl = quote! {
         impl Machine for #name {
-            type Ctx = #ctx_type;
+            type Context = #ctx_type;
 
-            open spec fn inv(ctx: Self::Ctx, state: Self) -> bool {
+            open spec fn inv(ctx: Self::Context, state: Self) -> bool {
                 state.validate(ctx)
             }
         }
@@ -89,7 +101,8 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
     // --- Init impl ---
     let init_ctx = &decl.init.ctx_name;
     let init_body = &decl.init.body;
-    let init_impl = quote! {
+    let init_span = init_ctx.span();
+    let init_impl = quote_spanned! { init_span =>
         pub struct Initialize;
 
         impl Init<#name> for Initialize {
@@ -126,17 +139,45 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
     // --- Refinement impl ---
     let refinement_impl = if let Some(ref refines_path) = decl.refines {
         let abstract_init = abstract_event_path(refines_path, &syn::Ident::new("Initialize", name.span()));
+        let has_concrete_event = decl.events.iter().any(|e| e.concrete);
+        let convergent_impl = match (&decl.variant, has_concrete_event) {
+            (Some(v), _) => {
+                let v_ctx = &v.ctx_name;
+                let v_state = &v.state_name;
+                let v_ty = &v.ret_type;
+                let v_body = &v.body;
+                quote! {
+                    impl ConvergentRefinement for #name {
+                        type Variant = #v_ty;
+
+                        open spec fn variant(#v_ctx: Self::Context, #v_state: Self) -> Self::Variant {
+                            #v_body
+                        }
+                    }
+                }
+            }
+            (None, true) => {
+                let err = syn::Error::new(
+                    name.span(),
+                    "machine with 'concrete' events must declare a machine-level 'variant(ctx, state) -> Type { ... }' block",
+                );
+                return err.to_compile_error();
+            }
+            (None, false) => quote! {},
+        };
         quote! {
             impl Refinement for #name {
                 type Abstract = #refines_path;
 
-                open spec fn lift_ctx(ctx: Self::Ctx) -> <Self::Abstract as Machine>::Ctx {
+                open spec fn lift_ctx(ctx: Self::Context) -> <Self::Abstract as Machine>::Context {
                     ctx
                 }
 
-                proof fn proof_lift_ctx_valid(ctx: Self::Ctx) {}
-                proof fn proof_lift_safe(ctx: Self::Ctx, state: Self) {}
+                proof fn proof_lift_ctx_valid(ctx: Self::Context) {}
+                proof fn proof_lift_safe(ctx: Self::Context, state: Self) {}
             }
+
+            #convergent_impl
 
             impl RefinedInit<#name, #abstract_init> for Initialize {
                 open spec fn lift_in(_input: ()) -> () { () }
@@ -156,68 +197,56 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
     // For () Input, call the guard directly (Verus's auto-witness of `()` in an existential
     // is unreliable).
     let deadlock_proof = if decl.deadlock_free {
-        let guards: Vec<_> = decl
-            .events
-            .iter()
-            .map(|evt| {
-                let ename = &evt.name;
-                if let Some(ref param) = evt.input {
-                    let pname = &param.name;
-                    let pty = &param.ty;
-                    quote! { exists|#pname: #pty| #ename::guard(ctx, state, #pname) }
-                } else {
-                    quote! { #ename::guard(ctx, state, ()) }
-                }
-            })
-            .collect();
-
-        let guard_disjunction = if guards.len() == 1 {
-            guards[0].clone()
+        if decl.events.is_empty() {
+            syn::Error::new(
+                name.span(),
+                "'deadlock_free' machine must declare at least one event \
+                 (a machine with no events is trivially deadlocked)",
+            )
+            .to_compile_error()
         } else {
-            let first = &guards[0];
-            let rest = &guards[1..];
-            quote! { #first #(|| #rest)* }
-        };
+            let guards: Vec<_> = decl
+                .events
+                .iter()
+                .map(|evt| {
+                    let ename = &evt.name;
+                    if let Some(ref param) = evt.input {
+                        let pname = &param.name;
+                        let pty = &param.ty;
+                        // Explicit #[trigger] on the guard call: needed because
+                        // `Event::guard` is `open spec`, so after unfolding the
+                        // bound variable typically only appears inside raw
+                        // arithmetic / built-ins that Verus rejects as triggers.
+                        // Keeping `Event::guard(...)` as the trigger pattern
+                        // preserves a well-formed quantifier regardless of body.
+                        quote! { exists|#pname: #pty| #[trigger] #ename::guard(ctx, state, #pname) }
+                    } else {
+                        quote! { #ename::guard(ctx, state, ()) }
+                    }
+                })
+                .collect();
 
-        quote! {
-            proof fn proof_deadlock_free(ctx: #ctx_type, state: #name)
-                requires
-                    ctx.valid(),
-                    #name::inv(ctx, state),
-                ensures
-                    #guard_disjunction,
-            {}
+            let guard_disjunction = if guards.len() == 1 {
+                guards[0].clone()
+            } else {
+                let first = &guards[0];
+                let rest = &guards[1..];
+                quote! { #first #(|| #rest)* }
+            };
+
+            let dl_span = name.span();
+            quote_spanned! { dl_span =>
+                proof fn proof_deadlock_free(ctx: #ctx_type, state: #name)
+                    requires
+                        ctx.valid(),
+                        #name::inv(ctx, state),
+                    ensures
+                        #guard_disjunction,
+                {}
+            }
         }
     } else {
         quote! {}
-    };
-
-    // --- Auxiliary functions ---
-    let aux_fn_impls: Vec<_> = decl
-        .aux_fns
-        .iter()
-        .map(|f| {
-            let fn_name = &f.name;
-            let state_name = &f.state_name;
-            let ret_type = &f.ret_type;
-            let body = &f.body;
-            quote! {
-                pub open spec fn #fn_name(&self) -> #ret_type {
-                    let #state_name = *self;
-                    #body
-                }
-            }
-        })
-        .collect();
-
-    let aux_fns_impl = if aux_fn_impls.is_empty() {
-        quote! {}
-    } else {
-        quote! {
-            impl #name {
-                #(#aux_fn_impls)*
-            }
-        }
     };
 
     // --- Inline ctx struct + MachineContext impl ---
@@ -272,8 +301,6 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             pub struct #name {
                 #(#field_defs,)*
             }
-
-            #aux_fns_impl
 
             #validate_impl
 
@@ -347,7 +374,11 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
         pub struct #event_name;
     };
 
-    let event_impl = quote! {
+    let (safety_span, safety_body) = match &evt.safety_proof {
+        Some(p) => (p.span, { let b = &p.body; quote! { #b } }),
+        None => (event_name.span(), quote! {}),
+    };
+    let event_impl = quote_spanned! { safety_span =>
         impl Event<#machine_name> for #event_name {
             type Input = #input_type;
             type Output = #output_type;
@@ -362,7 +393,9 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
 
             #output_fn
 
-            proof fn proof_safety(ctx: #ctx_type, state: #machine_name, #input_param) {}
+            proof fn proof_safety(ctx: #ctx_type, state: #machine_name, #input_param) {
+                #safety_body
+            }
         }
     };
 
@@ -413,13 +446,29 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
                 }
             };
 
-            quote! {
+            let (_str_span, str_body) = match &evt.strengthening_proof {
+                Some(p) => (p.span, { let b = &p.body; quote! { #b } }),
+                None => (event_name.span(), quote! {}),
+            };
+            let (_sim_span, sim_body) = match &evt.simulation_proof {
+                Some(p) => (p.span, { let b = &p.body; quote! { #b } }),
+                None => (event_name.span(), quote! {}),
+            };
+            let refined_span = evt.strengthening_proof.as_ref()
+                .or(evt.simulation_proof.as_ref())
+                .map(|p| p.span)
+                .unwrap_or_else(|| event_name.span());
+            quote_spanned! { refined_span =>
                 impl RefinedEvent<#machine_name, #abstract_event> for #event_name {
                     #lift_in_fn
                     #lift_out_fn
 
-                    proof fn proof_strengthening(ctx: #ctx_type, state: #machine_name, #input_param) {}
-                    proof fn proof_simulation(ctx: #ctx_type, state: #machine_name, #input_param) {}
+                    proof fn proof_strengthening(ctx: #ctx_type, state: #machine_name, #input_param) {
+                        #str_body
+                    }
+                    proof fn proof_simulation(ctx: #ctx_type, state: #machine_name, #input_param) {
+                        #sim_body
+                    }
                 }
             }
         } else {
@@ -429,30 +478,29 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
         quote! {}
     };
 
-    let convergent_impl = if evt.convergent {
-        if let Some(ref var) = evt.variant {
-            let var_ctx = &var.ctx_name;
-            let var_state = &var.state_name;
-            let var_body = &var.body;
-            quote! {
-                impl ConvergentEvent<#machine_name> for #event_name {
-                    open spec fn variant(#var_ctx: #ctx_type, #var_state: #machine_name) -> nat {
-                        #var_body
-                    }
-                    proof fn proof_convergence(ctx: #ctx_type, state: #machine_name, #input_param) {}
-                }
-            }
-        } else {
-            quote! { compile_error!("'convergent' event requires a 'variant' block"); }
-        }
-    } else {
-        quote! {}
-    };
-
     let new_impl = if evt.concrete {
+        let (stut_span, stut_body) = match &evt.stuttering_proof {
+            Some(p) => (p.span, { let b = &p.body; quote! { #b } }),
+            None => (event_name.span(), quote! {}),
+        };
+        let (conv_span, conv_body) = match &evt.convergence_proof {
+            Some(p) => (p.span, { let b = &p.body; quote! { #b } }),
+            None => (event_name.span(), quote! {}),
+        };
+        let conv_method = quote_spanned! { conv_span =>
+            proof fn proof_convergent(ctx: #ctx_type, state: #machine_name, #input_param) {
+                #conv_body
+            }
+        };
+        let stut_method = quote_spanned! { stut_span =>
+            proof fn proof_stuttering(ctx: #ctx_type, state: #machine_name, #input_param) {
+                #stut_body
+            }
+        };
         quote! {
             impl NewEvent<#machine_name> for #event_name {
-                proof fn proof_stuttering(ctx: #ctx_type, state: #machine_name, #input_param) {}
+                #conv_method
+                #stut_method
             }
         }
     } else {
@@ -463,7 +511,6 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
         #event_struct
         #event_impl
         #refined_impl
-        #convergent_impl
         #new_impl
     }
 }

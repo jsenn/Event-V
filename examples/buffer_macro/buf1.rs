@@ -2,10 +2,10 @@ use vstd::prelude::*;
 
 use crate::buf0;
 
-use verus_machine::machine::*;
-use verus_machine::verus_machine;
+use event_v::machine::*;
+use event_v::machine;
 
-verus_machine! {
+machine! {
 
 machine Buf1 refines buf0::Buf0 {
     ctx: buf0::Ctx,

@@ -6,8 +6,8 @@ use crate::ref2;
 
 use crate::shared::{Flag, Sensor, TrafficLight};
 
-use verus_machine::machine::*;
-use verus_machine::verus_machine;
+use event_v::machine::*;
+use event_v::machine;
 
 verus! {
 pub struct Controller {
@@ -46,7 +46,7 @@ pub struct Environment {
 
 }
 
-verus_machine! {
+machine! {
 
 deadlock_free machine Ref3 refines ref2::Ref2 {
     ctx: abs::Ctx,

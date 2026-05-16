@@ -1,12 +1,12 @@
 use vstd::prelude::*;
 
-use verus_machine::machine::*;
-use verus_machine::verus_machine;
+use event_v::machine::*;
+use event_v::machine;
 
 use crate::abs;
 use crate::shared::DiceRoll;
 
-verus_machine! {
+machine! {
 
 machine Board refines abs::Abs {
     ctx {

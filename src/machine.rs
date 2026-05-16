@@ -33,7 +33,7 @@ pub trait MachineContext: Sized {
     spec fn valid(&self) -> bool;
 }
 
-/// A `Machine` is the fundamental concept in `verus_machine`. It represents a piece of state that
+/// A `Machine` is the fundamental concept in `event_v`. It represents a piece of state that
 /// is constructed from a `MachineContext`, and which may be evolved by various `Events`.
 ///
 /// # Examples

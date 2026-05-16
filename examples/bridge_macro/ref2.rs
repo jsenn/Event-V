@@ -5,10 +5,10 @@ use crate::ref1;
 
 use crate::shared::TrafficLight;
 
-use verus_machine::machine::*;
-use verus_machine::verus_machine;
+use event_v::machine::*;
+use event_v::machine;
 
-verus_machine! {
+machine! {
 
 deadlock_free machine Ref2 refines ref1::Ref1 {
     ctx: abs::Ctx,

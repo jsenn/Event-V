@@ -2,7 +2,7 @@ use vstd::prelude::*;
 
 use crate::buf0;
 
-use verus_machine::machine::*;
+use event_v::machine::*;
 
 verus! {
 

@@ -1,6 +1,6 @@
 use vstd::prelude::*;
 
-use verus_machine::machine::*;
+use event_v::machine::*;
 
 verus! {
 

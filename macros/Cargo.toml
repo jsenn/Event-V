@@ -1,5 +1,5 @@
 [package]
-name = "verus-machine-macros"
+name = "event-v-macros"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,6 +8,6 @@ proc-macro = true
 
 [dependencies]
 syn = { version = "2", features = ["full"] }
-verus_syn = { path = "../../verus-src/dependencies/syn", features = ["full", "printing"] }
+verus_syn = { version = "=0.0.0-2026-05-10-0145", features = ["full", "printing"] }
 quote = "1"
 proc-macro2 = "1"

@@ -2,10 +2,10 @@ use vstd::prelude::*;
 
 use crate::abs;
 
-use verus_machine::machine::*;
-use verus_machine::verus_machine;
+use event_v::machine::*;
+use event_v::machine;
 
-verus_machine! {
+machine! {
 
 deadlock_free machine Ref1 refines abs::Abs {
     ctx: abs::Ctx,

@@ -20,17 +20,25 @@ pub struct State {
     pub car_left_island: bool,
 }
 
-impl Lift<ref1::State> for State {
-    open spec fn lift(&self) -> ref1::State {
+impl Lift<State, ref1::State> for State {
+    open spec fn lift(state: State) -> ref1::State {
         ref1::State {
-            cars_to_island: self.cars_to_island,
-            cars_on_island: self.cars_on_island,
-            cars_to_mainland: self.cars_to_mainland,
+            cars_to_island: state.cars_to_island,
+            cars_on_island: state.cars_on_island,
+            cars_to_mainland: state.cars_to_mainland,
         }
     }
 }
 
+impl Lift<BridgeCtx, BridgeCtx> for State {
+    open spec fn lift(ctx: BridgeCtx) -> BridgeCtx { ctx }
+}
+
 impl State {
+    pub open spec fn lift(&self) -> ref1::State {
+        <State as Lift<State, ref1::State>>::lift(*self)
+    }
+
     pub open spec fn validate(&self, ctx: BridgeCtx) -> bool {
         // Abstract
         &&& self.lift().validate(ctx)
@@ -79,12 +87,8 @@ impl Init<State> for Initialize {
 impl Refinement for State {
     type Abstract = ref1::State;
 
-    open spec fn lift_ctx(ctx: Self::Context) -> BridgeCtx {
-        ctx
-    }
-
-    proof fn proof_lift_ctx_valid(ctx: Self::Context) {}
-    proof fn proof_lift_safe(ctx: Self::Context, state: Self) {}
+    proof fn proof_lift_ctx_valid(ctx: BridgeCtx) {}
+    proof fn proof_lift_safe(ctx: BridgeCtx, state: Self) {}
 }
 
 impl ConvergentRefinement for State {
@@ -123,7 +127,7 @@ impl Event<State> for MainlandIn {
 }
 
 impl RefinedEvent<State, ref1::MainlandIn> for MainlandIn {
-    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_in(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
     open spec fn lift_out(_output: ()) -> () { () }
 
     proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
@@ -159,7 +163,7 @@ impl Event<State> for MainlandOut {
 }
 
 impl RefinedEvent<State, ref1::MainlandOut> for MainlandOut {
-    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_in(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
     open spec fn lift_out(_output: ()) -> () { () }
 
     proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
@@ -189,7 +193,7 @@ impl Event<State> for IslandIn {
 }
 
 impl RefinedEvent<State, ref1::IslandIn> for IslandIn {
-    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_in(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
     open spec fn lift_out(_output: ()) -> () { () }
 
     proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
@@ -226,7 +230,7 @@ impl Event<State> for IslandOut {
 }
 
 impl RefinedEvent<State, ref1::IslandOut> for IslandOut {
-    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_in(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
     open spec fn lift_out(_output: ()) -> () { () }
 
     proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}

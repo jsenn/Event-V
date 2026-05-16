@@ -87,15 +87,15 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
 
     lift(state) {
         ref2::Ref2 {
-            cars_to_island: self.con.cars_to_island,
-            cars_on_island: self.con.cars_on_island,
-            cars_to_mainland: self.con.cars_to_mainland,
+            cars_to_island: state.con.cars_to_island,
+            cars_on_island: state.con.cars_on_island,
+            cars_to_mainland: state.con.cars_to_mainland,
 
-            light_mainland: self.con.light_mainland,
-            light_island: self.con.light_island,
+            light_mainland: state.con.light_mainland,
+            light_island: state.con.light_island,
 
-            car_left_mainland: self.con.car_left_mainland,
-            car_left_island: self.con.car_left_island,
+            car_left_mainland: state.con.car_left_mainland,
+            car_left_island: state.con.car_left_island,
         }
     }
 

@@ -33,32 +33,6 @@ pub trait MachineContext: Sized {
     spec fn valid(&self) -> bool;
 }
 
-/// Defines the concept of "lifting" a concrete thing into a more abstract representation.
-/// This is a fundamental move in state machine refinement.
-/// 
-/// # Examples
-/// ```ignore
-/// struct AbstractBuffer {
-///     pub size: nat,
-/// }
-/// 
-/// struct ConcreteBuffer {
-///     pub values: Seq<int>,
-/// }
-/// 
-/// impl Lift<AbstractBuffer> for ConcreteBuffer {
-///     fn lift(&self) -> AbstractBuffer {
-///         AbstractBuffer {
-///             size: self.values.len(),
-///         }
-///     }
-/// }
-/// ```
-pub trait Lift<Abstract>: Sized {
-    /// Lifts a concrete data type into a more abstract representation.
-    spec fn lift(&self) -> Abstract;
-}
-
 /// A `Machine` is the fundamental concept in `verus_machine`. It represents a piece of state that
 /// is constructed from a `MachineContext`, and which may be evolved by various `Events`.
 ///
@@ -92,6 +66,12 @@ pub trait Machine: Sized {
 
     /// The machine's **invariant** defines what it means for the machine to be in a valid state.
     spec fn inv(ctx: Self::Context, state: Self) -> bool;
+}
+
+/// **Lift** a concrete representation (machine context or state) to an abstract one.
+pub trait Lift<Concrete, Abstract> {
+    /// Map a concrete value to its abstract representation.
+    spec fn lift(concrete: Concrete) -> Abstract;
 }
 
 /// The `Init` trait represents a special event that runs once at the beginning of a machine's
@@ -271,20 +251,19 @@ pub trait Event<M: Machine> {
 /// Then, each [`NewEvent`] provides a proof that it decreases the global variant. Due to the well-
 /// foundedness property, the variant acts as a finite amount of "fuel" that the concrete machine
 /// can run on before an abstract event must take place, preventing deadlock.
-pub trait Refinement: Machine + Lift<Self::Abstract>
+pub trait Refinement: Machine
+    + Lift<Self, Self::Abstract>
+    + Lift<Self::Context, <Self::Abstract as Machine>::Context>
 {
-    /// The abstract machine being refined
+    /// The abstract machine being refined.
     type Abstract: Machine;
 
-    /// Produce an abstract context given a concrete one.
-    spec fn lift_ctx(ctx: Self::Context) -> <Self::Abstract as Machine>::Context;
-
-    /// Prove that `lift_ctx` always produces a valid abstract context given a valid concrete one.
+    /// Prove that lifting a valid concrete context produces a valid abstract one.
     proof fn proof_lift_ctx_valid(ctx: Self::Context)
         requires
             ctx.valid(),
         ensures
-            Self::lift_ctx(ctx).valid();
+            Self::lift(ctx).valid();
 
     /// Prove that lifting a valid concrete state produces a valid abstract state.
     proof fn proof_lift_safe(ctx: Self::Context, state: Self)
@@ -292,7 +271,7 @@ pub trait Refinement: Machine + Lift<Self::Abstract>
             ctx.valid(),
             Self::inv(ctx, state),
         ensures
-            Self::Abstract::inv(Self::lift_ctx(ctx), state.lift());
+            <Self::Abstract as Machine>::inv(Self::lift(ctx), Self::lift(state));
 }
 
 /// A refinement that supplies a well-founded variant so that concrete events (those without an
@@ -327,7 +306,7 @@ pub trait RefinedInit<M: Refinement, Abstract: Init<M::Abstract>>: Init<M> {
         requires
             ctx.valid(),
         ensures
-            Self::init(ctx, input).lift() == Abstract::init(M::lift_ctx(ctx), Self::lift_in(input));
+            M::lift(Self::init(ctx, input)) == Abstract::init(M::lift(ctx), Self::lift_in(input));
 }
 
 /// A `RefinedEvent` maps a concrete event onto an abstract one. It has 4 parts:
@@ -340,7 +319,7 @@ pub trait RefinedInit<M: Refinement, Abstract: Init<M::Abstract>>: Init<M> {
 ///    would get from applying the *abstract* event to a lifted concrete state and input.
 pub trait RefinedEvent<M: Refinement, Abstract: Event<M::Abstract>>: Event<M> {
     /// Lift a concrete event input to an abstract one.
-    spec fn lift_in(input: Self::Input) -> Abstract::Input;
+    spec fn lift_in(ctx: M::Context, state: M, input: Self::Input) -> Abstract::Input;
 
     /// Lift a concrete event output to an abstract one.
     spec fn lift_out(output: Self::Output) -> Abstract::Output;
@@ -352,7 +331,7 @@ pub trait RefinedEvent<M: Refinement, Abstract: Event<M::Abstract>>: Event<M> {
             M::inv(ctx, state),
             Self::guard(ctx, state, input),
         ensures
-            Abstract::guard(M::lift_ctx(ctx), state.lift(), Self::lift_in(input));
+            Abstract::guard(M::lift(ctx), M::lift(state), Self::lift_in(ctx, state, input));
 
     /// Prove that applying the concrete event then lifting the result to an abstract machine state
     /// is equivalent to applying the *abstract* event to the lifted concrete state and input.
@@ -361,10 +340,10 @@ pub trait RefinedEvent<M: Refinement, Abstract: Event<M::Abstract>>: Event<M> {
             ctx.valid(),
             M::inv(ctx, state),
             Self::guard(ctx, state, input),
-            Abstract::guard(M::lift_ctx(ctx), state.lift(), Self::lift_in(input)),
+            Abstract::guard(M::lift(ctx), M::lift(state), Self::lift_in(ctx, state, input)),
         ensures
-            Self::action(ctx, state, input).lift() == Abstract::action(M::lift_ctx(ctx), state.lift(), Self::lift_in(input)),
-            Self::lift_out(Self::output(ctx, state, input)) == Abstract::output(M::lift_ctx(ctx), state.lift(), Self::lift_in(input));
+            M::lift(Self::action(ctx, state, input)) == Abstract::action(M::lift(ctx), M::lift(state), Self::lift_in(ctx, state, input)),
+            Self::lift_out(Self::output(ctx, state, input)) == Abstract::output(M::lift(ctx), M::lift(state), Self::lift_in(ctx, state, input));
 }
 
 /// A `NewEvent` is one that appears in a concrete machine which has no counterpart in an abstract
@@ -390,31 +369,33 @@ pub trait NewEvent<M: ConvergentRefinement>: Event<M> {
             M::inv(ctx, state),
             Self::guard(ctx, state, input),
         ensures
-            Self::action(ctx, state, input).lift() == state.lift();
+            M::lift(Self::action(ctx, state, input)) == M::lift(state);
 }
 
-/// A `MirrorContext` is an executable type that can be lifted to a spec context (its mirror).
-pub trait MirrorContext<Spec: MachineContext>: Sized {
-    /// Convert an executable context object to its spec mirror.
-    spec fn lift(&self) -> Spec;
-
-    /// Indicate whether the exec context is valid.
+/// A `MirrorContext` is the executable context type of a [`Mirror`].
+pub trait MirrorContext<M: Lift<Self, SpecCtx>, SpecCtx: MachineContext>: Sized {
+    /// Indicate whether the exec context is valid. Must agree with the lifted spec context.
     exec fn valid(&self) -> (b: bool)
         ensures
-            b == self.lift().valid();
+            b == M::lift(*self).valid();
 }
 
-/// A `Mirror` is an executable type that simulates a `Machine`, which is a spec type.
-pub trait Mirror<Spec: Machine>: Lift<Spec> {
-    /// The executable context type
-    type ExecCtx: MirrorContext<Spec::Context>;
+/// A `Mirror` is an executable type that simulates a spec [`Machine`].
+pub trait Mirror<Spec: Machine>:
+    Sized + Lift<Self, Spec> + Lift<Self::ExecCtx, Spec::Context>
+    where Self::ExecCtx: MirrorContext<Self, Spec::Context>
+{
+    /// The executable context type.
+    type ExecCtx;
 }
 
 /// `MirrorEvent` captures the relationship between an executable implementation of an event and
 /// its spec mirror. The key property is **bisimulation**: the exec guard should be enabled if and
 /// only if the spec guard is enabled on the lifted state, and its action should have a one-to-one
 /// relationship with the spec's action.
-pub trait MirrorEvent<M: Mirror<Spec>, Spec: Machine, SpecEv: Event<Spec>> {
+pub trait MirrorEvent<M: Mirror<Spec>, Spec: Machine, SpecEv: Event<Spec>>
+    where M::ExecCtx: MirrorContext<M, Spec::Context>
+{
     /// The type of input the executable event takes
     type Input;
     /// The type of output the executable event produces
@@ -430,20 +411,22 @@ pub trait MirrorEvent<M: Mirror<Spec>, Spec: Machine, SpecEv: Event<Spec>> {
     /// the spec guard is enabled on the lifted state.
     exec fn guard(state: &M, ctx: &M::ExecCtx, input: &Self::Input) -> (b: bool)
         ensures
-            b == SpecEv::guard(ctx.lift(), state.lift(), Self::lift_in(input));
+            b == SpecEv::guard(M::lift(*ctx), M::lift(*state), Self::lift_in(input));
 
     /// Transform the current exec state to a new state, producing an output. The action and output
     /// must be equivalent to those of the spec mirror.
     exec fn action(state: &M, ctx: &M::ExecCtx, input: &Self::Input) -> (out: (M, Self::Output))
         requires
-            SpecEv::guard(ctx.lift(), state.lift(), Self::lift_in(input)),
+            SpecEv::guard(M::lift(*ctx), M::lift(*state), Self::lift_in(input)),
         ensures
-            out.0.lift() == SpecEv::action(ctx.lift(), state.lift(), Self::lift_in(input)),
-            Self::lift_out(&out.1) == SpecEv::output(ctx.lift(), state.lift(), Self::lift_in(input));
+            M::lift(out.0) == SpecEv::action(M::lift(*ctx), M::lift(*state), Self::lift_in(input)),
+            Self::lift_out(&out.1) == SpecEv::output(M::lift(*ctx), M::lift(*state), Self::lift_in(input));
 }
 
 /// `MirrorInit` connects an executable initialization with a spec one.
-pub trait MirrorInit<M: Mirror<Spec>, Spec: Machine, SpecInit: Init<Spec>> {
+pub trait MirrorInit<M: Mirror<Spec>, Spec: Machine, SpecInit: Init<Spec>>
+    where M::ExecCtx: MirrorContext<M, Spec::Context>
+{
     /// The type of the executable init's input
     type Input;
 
@@ -453,7 +436,7 @@ pub trait MirrorInit<M: Mirror<Spec>, Spec: Machine, SpecInit: Init<Spec>> {
     /// Initialize the executable state given a context and input.
     exec fn init(ctx: &M::ExecCtx, input: &Self::Input) -> (state: M)
         ensures
-            state.lift() == SpecInit::init(ctx.lift(), Self::lift_in(input));
+            M::lift(state) == SpecInit::init(M::lift(*ctx), Self::lift_in(input));
 }
 
 }

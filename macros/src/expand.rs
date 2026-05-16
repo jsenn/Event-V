@@ -29,6 +29,27 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             )
             .to_compile_error();
         }
+        if let Some(lc) = &decl.lift_ctx {
+            return syn::Error::new(
+                lc.ctx_name.span(),
+                "'lift_ctx' may only appear in a machine that 'refines' another",
+            )
+            .to_compile_error();
+        }
+        if let Some(p) = &decl.proof_lift_ctx_valid {
+            return syn::Error::new(
+                p.ctx_name.span(),
+                "'proof_lift_ctx_valid' may only appear in a machine that 'refines' another",
+            )
+            .to_compile_error();
+        }
+        if let Some(p) = &decl.proof_lift_safe {
+            return syn::Error::new(
+                p.span,
+                "'proof_lift_safe' may only appear in a machine that 'refines' another",
+            )
+            .to_compile_error();
+        }
     }
 
     // --- State struct ---
@@ -44,18 +65,31 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
 
     // --- validate method ---
     // Abstract machines: validate = user invariant body
-    // Refined machines: validate = abstract_validate && user invariant body
+    // Refined machines: validate = abstract_validate(lifted ctx) && user invariant body
+    //
+    // The context lift is `<Self as Lift<ConcreteCtx, AbstractCtx>>::lift` — written fully
+    // qualified because the machine carries two `Lift` impls (state and context).
+    let lifted_ctx = |ctx_ident: &syn::Ident| -> TokenStream {
+        match &decl.refines {
+            Some(refines_path) => quote! {
+                <#name as Lift<#ctx_type, <#refines_path as Machine>::Context>>::lift(#ctx_ident)
+            },
+            None => quote! { #ctx_ident },
+        }
+    };
+
     let validate_impl = if let Some(ref inv) = decl.invariant {
         let inv_ctx = &inv.ctx_name;
         let inv_state = &inv.state_name;
         let inv_body = &inv.body;
 
         if decl.refines.is_some() {
+            let lifted = lifted_ctx(inv_ctx);
             quote! {
                 impl #name {
                     pub open spec fn validate(&self, #inv_ctx: #ctx_type) -> bool {
                         let #inv_state = *self;
-                        self.lift().validate(#inv_ctx) && { #inv_body }
+                        self.lift().validate(#lifted) && { #inv_body }
                     }
                 }
             }
@@ -70,10 +104,12 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             }
         }
     } else if decl.refines.is_some() {
+        let ctx_ident = syn::Ident::new("ctx", name.span());
+        let lifted = lifted_ctx(&ctx_ident);
         quote! {
             impl #name {
                 pub open spec fn validate(&self, ctx: #ctx_type) -> bool {
-                    self.lift().validate(ctx)
+                    self.lift().validate(#lifted)
                 }
             }
         }
@@ -119,19 +155,64 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         }
     };
 
-    // --- Lift impl (refinements only) ---
-    let lift_impl = if let (Some(ref refines_path), Some(ref lift_decl)) =
-        (&decl.refines, &decl.lift)
-    {
+    // --- Lift impls (refinements only): state lift + ctx lift, keyed on the machine ---
+    let lift_impl = if let Some(ref refines_path) = decl.refines {
+        let lift_decl = match &decl.lift {
+            Some(l) => l,
+            None => {
+                return syn::Error::new(
+                    name.span(),
+                    "a machine that 'refines' another must declare a 'lift(state) { ... }' block",
+                )
+                .to_compile_error();
+            }
+        };
         let lift_state = &lift_decl.state_name;
         let lift_body = &lift_decl.body;
+
+        let (lc_ctx, lc_body) = match &decl.lift_ctx {
+            Some(lc) => (lc.ctx_name.clone(), lc.body.clone()),
+            None => (
+                syn::Ident::new("ctx", name.span()),
+                quote! { ctx },
+            ),
+        };
+
+        // `&self` convenience for the context lift — only for an inline `ctx { }` declaration,
+        // whose `Ctx` struct is unique to this machine. An external context type may be shared
+        // between machines, so an inherent `lift` method on it would collide.
+        let ctx_helper = match &decl.ctx {
+            CtxDecl::Inline { .. } => quote! {
+                impl #ctx_type {
+                    pub open spec fn lift(&self) -> <#refines_path as Machine>::Context {
+                        <#name as Lift<#ctx_type, <#refines_path as Machine>::Context>>::lift(*self)
+                    }
+                }
+            },
+            CtxDecl::External(_) => quote! {},
+        };
+
         quote! {
-            impl Lift<#refines_path> for #name {
-                open spec fn lift(&self) -> #refines_path {
-                    let #lift_state = *self;
+            impl Lift<#name, #refines_path> for #name {
+                open spec fn lift(#lift_state: #name) -> #refines_path {
                     #lift_body
                 }
             }
+
+            impl Lift<#ctx_type, <#refines_path as Machine>::Context> for #name {
+                open spec fn lift(#lc_ctx: #ctx_type) -> <#refines_path as Machine>::Context {
+                    #lc_body
+                }
+            }
+
+            // `&self` convenience for the state lift, so DSL bodies can write `state.lift()`.
+            impl #name {
+                pub open spec fn lift(&self) -> #refines_path {
+                    <#name as Lift<#name, #refines_path>>::lift(*self)
+                }
+            }
+
+            #ctx_helper
         }
     } else {
         quote! {}
@@ -166,16 +247,45 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             }
             (None, false) => quote! {},
         };
+
+        let proof_lift_ctx_valid_fn = match &decl.proof_lift_ctx_valid {
+            Some(p) => {
+                let p_ctx = &p.ctx_name;
+                let p_body = &p.body;
+                quote! {
+                    proof fn proof_lift_ctx_valid(#p_ctx: #ctx_type) {
+                        #p_body
+                    }
+                }
+            }
+            None => quote! {
+                proof fn proof_lift_ctx_valid(_ctx: #ctx_type) {}
+            },
+        };
+
+        let proof_lift_safe_fn = match &decl.proof_lift_safe {
+            Some(p) => {
+                let p_ctx = &p.ctx_name;
+                let p_state = &p.state_name;
+                let p_body = &p.body;
+                quote_spanned! { p.span =>
+                    proof fn proof_lift_safe(#p_ctx: #ctx_type, #p_state: Self) {
+                        #p_body
+                    }
+                }
+            }
+            None => quote! {
+                proof fn proof_lift_safe(_ctx: #ctx_type, _state: Self) {}
+            },
+        };
+
         quote! {
             impl Refinement for #name {
                 type Abstract = #refines_path;
 
-                open spec fn lift_ctx(ctx: Self::Context) -> <Self::Abstract as Machine>::Context {
-                    ctx
-                }
+                #proof_lift_ctx_valid_fn
 
-                proof fn proof_lift_ctx_valid(_ctx: Self::Context) {}
-                proof fn proof_lift_safe(_ctx: Self::Context, _state: Self) {}
+                #proof_lift_safe_fn
             }
 
             #convergent_impl
@@ -414,19 +524,27 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
 
             // lift_in: map concrete input to abstract input.
             let lift_in_fn = if let Some(ref li) = evt.lift_in {
-                let li_param = &li.param_name;
+                let li_ctx = &li.ctx_name;
+                let li_state = &li.state_name;
+                let li_input = &li.input_name;
                 let li_body = &li.body;
                 quote! {
-                    open spec fn lift_in(#li_param: #input_type)
+                    open spec fn lift_in(#li_ctx: #ctx_type, #li_state: #machine_name, #li_input: #input_type)
                         -> <#abstract_event as Event<#refines_path>>::Input
                     {
                         #li_body
                     }
                 }
+            } else if evt.input.is_some() {
+                return syn::Error::new(
+                    evt.name.span(),
+                    "refined event with an input must declare a 'lift_in(ctx, state, input) { ... }' \
+                     block mapping the concrete input to the abstract input",
+                )
+                .to_compile_error();
             } else {
-                // Default: map to unit. Works when the abstract input type is `()`.
                 quote! {
-                    open spec fn lift_in(_input: #input_type)
+                    open spec fn lift_in(_ctx: #ctx_type, _state: #machine_name, _input: #input_type)
                         -> <#abstract_event as Event<#refines_path>>::Input
                     {
                         ()

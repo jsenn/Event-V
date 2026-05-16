@@ -15,6 +15,9 @@ mod kw {
     syn::custom_keyword!(state);
     syn::custom_keyword!(init);
     syn::custom_keyword!(lift);
+    syn::custom_keyword!(lift_ctx);
+    syn::custom_keyword!(proof_lift_ctx_valid);
+    syn::custom_keyword!(proof_lift_safe);
     syn::custom_keyword!(invariant);
     syn::custom_keyword!(event);
     syn::custom_keyword!(guard);
@@ -72,6 +75,9 @@ pub struct MachineDecl {
     pub state_fields: Vec<StateField>,
     pub init: InitDecl,
     pub lift: Option<LiftDecl>,
+    pub lift_ctx: Option<LiftCtxDecl>,
+    pub proof_lift_ctx_valid: Option<LiftCtxDecl>,
+    pub proof_lift_safe: Option<FnBody>,
     pub invariant: Option<InvariantDecl>,
     pub variant: Option<VariantDecl>,
     pub events: Vec<EventDecl>,
@@ -99,6 +105,11 @@ pub struct LiftDecl {
     pub body: TokenStream,
 }
 
+pub struct LiftCtxDecl {
+    pub ctx_name: Ident,
+    pub body: TokenStream,
+}
+
 pub struct InvariantDecl {
     pub ctx_name: Ident,
     pub state_name: Ident,
@@ -115,6 +126,13 @@ pub struct LiftFn {
     pub body: TokenStream,
 }
 
+pub struct LiftInFn {
+    pub ctx_name: Ident,
+    pub state_name: Ident,
+    pub input_name: Ident,
+    pub body: TokenStream,
+}
+
 pub struct EventDecl {
     pub refined: bool,
     pub concrete: bool,
@@ -124,7 +142,7 @@ pub struct EventDecl {
     pub guard: FnBody,
     pub action: FnBody,
     pub output: Option<FnBody>,
-    pub lift_in: Option<LiftFn>,
+    pub lift_in: Option<LiftInFn>,
     pub lift_out: Option<LiftFn>,
     pub safety_proof: Option<FnBody>,
     pub strengthening_proof: Option<FnBody>,
@@ -234,11 +252,15 @@ fn parse_event(content: ParseStream) -> Result<EventDecl> {
             event_content.parse::<kw::lift_in>()?;
             let params;
             parenthesized!(params in event_content);
-            let param_name: Ident = params.parse()?;
+            let ctx_name: Ident = params.parse()?;
+            params.parse::<Token![,]>()?;
+            let state_name: Ident = params.parse()?;
+            params.parse::<Token![,]>()?;
+            let input_name: Ident = params.parse()?;
             let body_content;
             braced!(body_content in event_content);
             let body: TokenStream = body_content.parse()?;
-            lift_in = Some(LiftFn { param_name, body });
+            lift_in = Some(LiftInFn { ctx_name, state_name, input_name, body });
         } else if event_content.peek(kw::lift_out) {
             event_content.parse::<kw::lift_out>()?;
             let params;
@@ -353,6 +375,9 @@ impl Parse for MachineDecl {
         let mut state_fields = None;
         let mut init = None;
         let mut lift = None;
+        let mut lift_ctx = None;
+        let mut proof_lift_ctx_valid = None;
+        let mut proof_lift_safe = None;
         let mut invariant = None;
         let mut variant = None;
         let mut events = Vec::new();
@@ -401,6 +426,27 @@ impl Parse for MachineDecl {
                 braced!(body_content in content);
                 let body: TokenStream = body_content.parse()?;
                 lift = Some(LiftDecl { state_name, body });
+            } else if content.peek(kw::lift_ctx) {
+                content.parse::<kw::lift_ctx>()?;
+                let params;
+                parenthesized!(params in content);
+                let ctx_name: Ident = params.parse()?;
+                let body_content;
+                braced!(body_content in content);
+                let body: TokenStream = body_content.parse()?;
+                lift_ctx = Some(LiftCtxDecl { ctx_name, body });
+            } else if content.peek(kw::proof_lift_ctx_valid) {
+                content.parse::<kw::proof_lift_ctx_valid>()?;
+                let params;
+                parenthesized!(params in content);
+                let ctx_name: Ident = params.parse()?;
+                let body_content;
+                braced!(body_content in content);
+                let body: TokenStream = body_content.parse()?;
+                proof_lift_ctx_valid = Some(LiftCtxDecl { ctx_name, body });
+            } else if content.peek(kw::proof_lift_safe) {
+                let kw = content.parse::<kw::proof_lift_safe>()?;
+                proof_lift_safe = Some(parse_fn_body(&content, kw.span)?);
             } else if content.peek(kw::invariant) {
                 content.parse::<kw::invariant>()?;
                 let params;
@@ -441,7 +487,9 @@ impl Parse for MachineDecl {
                 events.push(parse_event(&content)?);
             } else {
                 return Err(content.error(
-                    "expected 'state', 'valid', 'init', 'lift', 'invariant', 'variant', or event declaration",
+                    "expected 'state', 'valid', 'init', 'lift', 'lift_ctx', \
+                     'proof_lift_ctx_valid', 'proof_lift_safe', 'invariant', 'variant', \
+                     or event declaration",
                 ));
             }
         }
@@ -455,6 +503,9 @@ impl Parse for MachineDecl {
             state_fields: state_fields.unwrap_or_default(),
             init: init.ok_or_else(|| syn::Error::new(name_span, "missing 'init' block"))?,
             lift,
+            lift_ctx,
+            proof_lift_ctx_valid,
+            proof_lift_safe,
             invariant,
             variant,
             events,

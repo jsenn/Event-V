@@ -118,7 +118,7 @@ pub open spec fn b2n(b: bool) -> nat { if b { 1nat } else { 0nat } }
 
 impl LexLt for bool {
     open spec fn lex_lt(a: bool, b: bool) -> bool {
-        <nat as LexLt>::lex_lt(b2n(a), b2n(b))
+        nat::lex_lt(b2n(a), b2n(b))
     }
 }
 

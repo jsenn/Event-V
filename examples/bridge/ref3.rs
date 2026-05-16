@@ -46,23 +46,31 @@ pub struct State {
     pub env: Environment,
 }
 
-impl Lift<ref2::State> for State {
-    open spec fn lift(&self) -> ref2::State {
+impl Lift<State, ref2::State> for State {
+    open spec fn lift(state: State) -> ref2::State {
         ref2::State {
-            cars_to_island: self.con.cars_to_island,
-            cars_on_island: self.con.cars_on_island,
-            cars_to_mainland: self.con.cars_to_mainland,
+            cars_to_island: state.con.cars_to_island,
+            cars_on_island: state.con.cars_on_island,
+            cars_to_mainland: state.con.cars_to_mainland,
 
-            light_mainland: self.con.light_mainland,
-            light_island: self.con.light_island,
+            light_mainland: state.con.light_mainland,
+            light_island: state.con.light_island,
 
-            car_left_mainland: self.con.car_left_mainland,
-            car_left_island: self.con.car_left_island,
+            car_left_mainland: state.con.car_left_mainland,
+            car_left_island: state.con.car_left_island,
         }
     }
 }
 
+impl Lift<BridgeCtx, BridgeCtx> for State {
+    open spec fn lift(ctx: BridgeCtx) -> BridgeCtx { ctx }
+}
+
 impl State {
+    pub open spec fn lift(&self) -> ref2::State {
+        <State as Lift<State, ref2::State>>::lift(*self)
+    }
+
     pub open spec fn validate(&self, ctx: BridgeCtx) -> bool {
         // Abstract
         &&& self.lift().validate(ctx)
@@ -161,12 +169,8 @@ impl Init<State> for Initialize {
 impl Refinement for State {
     type Abstract = ref2::State;
 
-    open spec fn lift_ctx(ctx: Self::Context) -> <Self::Abstract as Machine>::Context {
-        ctx
-    }
-
-    proof fn proof_lift_ctx_valid(ctx: Self::Context) {}
-    proof fn proof_lift_safe(ctx: Self::Context, state: Self) {}
+    proof fn proof_lift_ctx_valid(ctx: BridgeCtx) {}
+    proof fn proof_lift_safe(ctx: BridgeCtx, state: Self) {}
 }
 
 impl ConvergentRefinement for State {
@@ -219,7 +223,7 @@ impl Event<State> for MainlandIn {
 }
 
 impl RefinedEvent<State, ref2::MainlandIn> for MainlandIn {
-    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_in(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
     open spec fn lift_out(_output: ()) -> () { () }
 
     proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
@@ -259,7 +263,7 @@ impl Event<State> for MainlandOut {
 }
 
 impl RefinedEvent<State, ref2::MainlandOut> for MainlandOut {
-    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_in(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
     open spec fn lift_out(_output: ()) -> () { () }
 
     proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
@@ -294,7 +298,7 @@ impl Event<State> for IslandIn {
 }
 
 impl RefinedEvent<State, ref2::IslandIn> for IslandIn {
-    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_in(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
     open spec fn lift_out(_output: ()) -> () { () }
 
     proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
@@ -335,7 +339,7 @@ impl Event<State> for IslandOut {
 }
 
 impl RefinedEvent<State, ref2::IslandOut> for IslandOut {
-    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_in(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
     open spec fn lift_out(_output: ()) -> () { () }
 
     proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
@@ -373,7 +377,7 @@ impl Event<State> for TurnGreenMainland {
 }
 
 impl RefinedEvent<State, ref2::TurnGreenMainland> for TurnGreenMainland {
-    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_in(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
     open spec fn lift_out(_output: ()) -> () { () }
 
     proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
@@ -411,7 +415,7 @@ impl Event<State> for TurnGreenIsland {
 }
 
 impl RefinedEvent<State, ref2::TurnGreenIsland> for TurnGreenIsland {
-    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_in(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
     open spec fn lift_out(_output: ()) -> () { () }
 
     proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}

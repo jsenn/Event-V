@@ -35,7 +35,7 @@ machine Buf1 refines buf0::Buf0 {
             }
         }
 
-        lift_in(_elem) { () }
+        lift_in(_ctx, _state, _elem) { () }
     }
 
     refined event Fetch -> nat {

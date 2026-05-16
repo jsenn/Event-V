@@ -14,15 +14,23 @@ pub struct State {
     pub cars_to_mainland: nat,
 }
 
-impl Lift<abs::State> for State {
-    open spec fn lift(&self) -> abs::State {
+impl Lift<State, abs::State> for State {
+    open spec fn lift(state: State) -> abs::State {
         abs::State {
-            cars: self.total_cars(),
+            cars: state.total_cars(),
         }
     }
 }
 
+impl Lift<BridgeCtx, BridgeCtx> for State {
+    open spec fn lift(ctx: BridgeCtx) -> BridgeCtx { ctx }
+}
+
 impl State {
+    pub open spec fn lift(&self) -> abs::State {
+        <State as Lift<State, abs::State>>::lift(*self)
+    }
+
     pub open spec fn total_cars(&self) -> nat {
         self.cars_to_island + self.cars_on_island + self.cars_to_mainland
     }
@@ -59,12 +67,8 @@ impl Init<State> for Initialize {
 impl Refinement for State {
     type Abstract = abs::State;
 
-    open spec fn lift_ctx(ctx: Self::Context) -> <Self::Abstract as Machine>::Context {
-        ctx
-    }
-
-    proof fn proof_lift_ctx_valid(ctx: Self::Context) {}
-    proof fn proof_lift_safe(ctx: Self::Context, state: Self) {}
+    proof fn proof_lift_ctx_valid(ctx: BridgeCtx) {}
+    proof fn proof_lift_safe(ctx: BridgeCtx, state: Self) {}
 }
 
 impl ConvergentRefinement for State {
@@ -103,7 +107,7 @@ impl Event<State> for MainlandIn {
 }
 
 impl RefinedEvent<State, abs::MainlandIn> for MainlandIn {
-    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_in(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
     open spec fn lift_out(_output: ()) -> () { () }
 
     proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
@@ -133,7 +137,7 @@ impl Event<State> for MainlandOut {
 }
 
 impl RefinedEvent<State, abs::MainlandOut> for MainlandOut {
-    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_in(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
     open spec fn lift_out(_output: ()) -> () { () }
 
     proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}

@@ -69,17 +69,19 @@ pub struct AbsExecCtx {
     pub max_cars: u32,
 }
 
-impl Lift<Abs> for AbsExec {
-    open spec fn lift(&self) -> Abs {
-        Abs { cars: self.cars as nat }
+impl Lift<AbsExec, Abs> for AbsExec {
+    open spec fn lift(state: AbsExec) -> Abs {
+        Abs { cars: state.cars as nat }
     }
 }
 
-impl MirrorContext<Ctx> for AbsExecCtx {
-    open spec fn lift(&self) -> Ctx {
-        Ctx { max_cars: self.max_cars as nat }
+impl Lift<AbsExecCtx, Ctx> for AbsExec {
+    open spec fn lift(ctx: AbsExecCtx) -> Ctx {
+        Ctx { max_cars: ctx.max_cars as nat }
     }
+}
 
+impl MirrorContext<AbsExec, Ctx> for AbsExecCtx {
     fn valid(&self) -> (b: bool) {
         self.max_cars > 0
     }

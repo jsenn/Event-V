@@ -11,13 +11,21 @@ pub struct State {
     pub data: Seq<nat>,
 }
 
-impl Lift<buf0::State> for State {
-    open spec fn lift(&self) -> buf0::State {
-        buf0::State { size: self.data.len() }
+impl Lift<State, buf0::State> for State {
+    open spec fn lift(state: State) -> buf0::State {
+        buf0::State { size: state.data.len() }
     }
 }
 
+impl Lift<buf0::Ctx, buf0::Ctx> for State {
+    open spec fn lift(ctx: buf0::Ctx) -> buf0::Ctx { ctx }
+}
+
 impl State {
+    pub open spec fn lift(&self) -> buf0::State {
+        <State as Lift<State, buf0::State>>::lift(*self)
+    }
+
     pub open spec fn validate(&self, ctx: buf0::Ctx) -> bool {
         self.lift().validate(ctx)
     }
@@ -34,10 +42,8 @@ impl Machine for State {
 impl Refinement for State {
     type Abstract = buf0::State;
 
-    open spec fn lift_ctx(ctx: Self::Context) -> buf0::Ctx { ctx }
-
-    proof fn proof_lift_ctx_valid(ctx: Self::Context) {}
-    proof fn proof_lift_safe(ctx: Self::Context, state: Self) {}
+    proof fn proof_lift_ctx_valid(ctx: buf0::Ctx) {}
+    proof fn proof_lift_safe(ctx: buf0::Ctx, state: Self) {}
 }
 
 /// Initialization: empty buffer.
@@ -80,7 +86,7 @@ impl Event<State> for Put {
 
 impl RefinedEvent<State, buf0::Put> for Put {
     /// Discard the element — the abstract level doesn't track it.
-    open spec fn lift_in(_input: nat) -> () { () }
+    open spec fn lift_in(_ctx: buf0::Ctx, _state: State, _input: nat) -> () { () }
     open spec fn lift_out(_output: ()) -> () { () }
 
     proof fn proof_strengthening(ctx: buf0::Ctx, state: State, _input: nat) {}
@@ -108,7 +114,7 @@ impl Event<State> for PutLast {
 }
 
 impl RefinedEvent<State, buf0::Put> for PutLast {
-    open spec fn lift_in(_input: nat) -> () { () }
+    open spec fn lift_in(_ctx: buf0::Ctx, _state: State, _input: nat) -> () { () }
     open spec fn lift_out(_output: ()) -> () { () }
 
     proof fn proof_strengthening(ctx: buf0::Ctx, state: State, _input: nat) {}
@@ -138,7 +144,7 @@ impl Event<State> for Fetch {
 }
 
 impl RefinedEvent<State, buf0::Fetch> for Fetch {
-    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_in(_ctx: buf0::Ctx, _state: State, _input: ()) -> () { () }
     /// Discard the fetched element — the abstract level doesn't return one.
     open spec fn lift_out(_output: nat) -> () { () }
 
@@ -168,7 +174,7 @@ impl Event<State> for GetSize {
 }
 
 impl RefinedEvent<State, buf0::GetSize> for GetSize {
-    open spec fn lift_in(_input: ()) -> () { () }
+    open spec fn lift_in(_ctx: buf0::Ctx, _state: State, _input: ()) -> () { () }
     /// Output matches exactly — both return the size.
     open spec fn lift_out(output: nat) -> nat { output }
 

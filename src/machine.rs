@@ -17,7 +17,7 @@ verus! {
 /// might have an initial inventory and amount of change.
 ///
 /// # Examples
-/// ```ignore
+/// ```rust,ignore
 /// pub struct CounterCtx {
 ///     pub max_value: nat,
 /// }
@@ -37,7 +37,7 @@ pub trait MachineContext: Sized {
 /// is constructed from a `MachineContext`, and which may be evolved by various `Events`.
 ///
 /// # Examples
-/// ```ignore
+/// ```rust,ignore
 /// pub struct CounterCtx {
 ///     pub max_value: nat,
 /// }
@@ -55,7 +55,7 @@ pub trait MachineContext: Sized {
 /// impl Machine for Counter {
 ///     type Ctx = Ctx;
 ///
-///     open spec fn inv(ctx: Self::Context, state: Self) -> bool {
+///     open spec fn invariant(ctx: Self::Context, state: Self) -> bool {
 ///         self.value <= ctx.max_value
 ///     }
 /// }
@@ -65,7 +65,7 @@ pub trait Machine: Sized {
     type Context: MachineContext;
 
     /// The machine's **invariant** defines what it means for the machine to be in a valid state.
-    spec fn inv(ctx: Self::Context, state: Self) -> bool;
+    spec fn invariant(ctx: Self::Context, state: Self) -> bool;
 }
 
 /// **Lift** a concrete representation (machine context or state) to an abstract one.
@@ -78,7 +78,7 @@ pub trait Lift<Concrete, Abstract> {
 /// lifetime. A machine can have multiple `Init`s, but only one can be used in a given trajectory.
 /// 
 /// # Examples
-/// ```ignore
+/// ```rust,ignore
 /// pub struct CounterCtx {
 ///     pub max_value: nat,
 /// }
@@ -96,7 +96,7 @@ pub trait Lift<Concrete, Abstract> {
 /// impl Machine for Counter {
 ///     type Context = CounterCtx;
 ///
-///     open spec fn inv(ctx: Self::Context, state: Self) -> bool {
+///     open spec fn invariant(ctx: Self::Context, state: Self) -> bool {
 ///         self.value <= ctx.max_value
 ///     }
 /// }
@@ -135,7 +135,7 @@ pub trait Init<M: Machine> {
     /// initialization.
     proof fn proof_safety(ctx: M::Context, input: Self::Input)
         requires ctx.valid(),
-        ensures M::inv(ctx, Self::init(ctx, input));
+        ensures M::invariant(ctx, Self::init(ctx, input));
 }
 
 /// Represents an event that modifies a machine's state. An event has 3 basic components:
@@ -147,7 +147,7 @@ pub trait Init<M: Machine> {
 /// state from a valid one. This guarantee is provided by the event's **safety proof**.
 ///
 /// # Examples
-/// ```ignore
+/// ```rust,ignore
 /// pub struct CounterCtx {
 ///     pub max_value: nat,
 /// }
@@ -165,7 +165,7 @@ pub trait Init<M: Machine> {
 /// impl Machine for Counter {
 ///     type Context = Ctx;
 ///
-///     open spec fn inv(ctx: Self::Context, state: Self) -> bool {
+///     open spec fn invariant(ctx: Self::Context, state: Self) -> bool {
 ///         self.value <= ctx.max_value
 ///     }
 /// }
@@ -222,10 +222,10 @@ pub trait Event<M: Machine> {
     proof fn proof_safety(ctx: M::Context, state: M, input: Self::Input)
         requires
             ctx.valid(),
-            M::inv(ctx, state),
+            M::invariant(ctx, state),
             Self::guard(ctx, state, input),
         ensures
-            M::inv(ctx, Self::action(ctx, state, input));
+            M::invariant(ctx, Self::action(ctx, state, input));
 }
 
 /// A `Refinement` maps a `Machine` to a second more abstract `Machine` to which it adds some
@@ -269,9 +269,9 @@ pub trait Refinement: Machine
     proof fn proof_lift_safe(ctx: Self::Context, state: Self)
         requires
             ctx.valid(),
-            Self::inv(ctx, state),
+            Self::invariant(ctx, state),
         ensures
-            <Self::Abstract as Machine>::inv(Self::lift(ctx), Self::lift(state));
+            <Self::Abstract as Machine>::invariant(Self::lift(ctx), Self::lift(state));
 }
 
 /// A refinement that supplies a well-founded variant so that concrete events (those without an
@@ -328,7 +328,7 @@ pub trait RefinedEvent<M: Refinement, Abstract: Event<M::Abstract>>: Event<M> {
     proof fn proof_strengthening(ctx: M::Context, state: M, input: Self::Input)
         requires
             ctx.valid(),
-            M::inv(ctx, state),
+            M::invariant(ctx, state),
             Self::guard(ctx, state, input),
         ensures
             Abstract::guard(M::lift(ctx), M::lift(state), Self::lift_in(ctx, state, input));
@@ -338,7 +338,7 @@ pub trait RefinedEvent<M: Refinement, Abstract: Event<M::Abstract>>: Event<M> {
     proof fn proof_simulation(ctx: M::Context, state: M, input: Self::Input)
         requires
             ctx.valid(),
-            M::inv(ctx, state),
+            M::invariant(ctx, state),
             Self::guard(ctx, state, input),
             Abstract::guard(M::lift(ctx), M::lift(state), Self::lift_in(ctx, state, input)),
         ensures
@@ -355,7 +355,7 @@ pub trait NewEvent<M: ConvergentRefinement>: Event<M> {
     proof fn proof_convergent(ctx: M::Context, state: M, input: Self::Input)
         requires
             ctx.valid(),
-            M::inv(ctx, state),
+            M::invariant(ctx, state),
             Self::guard(ctx, state, input),
         ensures
             <M::Variant as LexLt>::lex_lt(
@@ -366,7 +366,7 @@ pub trait NewEvent<M: ConvergentRefinement>: Event<M> {
     proof fn proof_stuttering(ctx: M::Context, state: M, input: Self::Input)
         requires
             ctx.valid(),
-            M::inv(ctx, state),
+            M::invariant(ctx, state),
             Self::guard(ctx, state, input),
         ensures
             M::lift(Self::action(ctx, state, input)) == M::lift(state);

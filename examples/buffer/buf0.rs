@@ -29,7 +29,7 @@ impl State {
 impl Machine for State {
     type Context = Ctx;
 
-    open spec fn inv(ctx: Self::Context, state: Self) -> bool {
+    open spec fn invariant(ctx: Self::Context, state: Self) -> bool {
         state.validate(ctx)
     }
 }
@@ -108,7 +108,7 @@ impl Event<State> for GetSize {
 proof fn proof_deadlock_free(ctx: Ctx, state: State)
     requires
         ctx.valid(),
-        State::inv(ctx, state),
+        State::invariant(ctx, state),
     ensures
         Put::guard(ctx, state, ()) || Fetch::guard(ctx, state, ()) || GetSize::guard(ctx, state, ()),
 {}

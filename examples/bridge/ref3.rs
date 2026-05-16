@@ -123,7 +123,7 @@ impl State {
 impl Machine for State {
     type Context = BridgeCtx;
 
-    open spec fn inv(ctx: Self::Context, state: Self) -> bool {
+    open spec fn invariant(ctx: Self::Context, state: Self) -> bool {
         state.validate(ctx)
     }
 }
@@ -688,7 +688,7 @@ impl NewEvent<State> for SensorIslandInDepart {
 proof fn proof_deadlock_free(ctx: BridgeCtx, state: State)
     requires
         ctx.valid(),
-        State::inv(ctx, state),
+        State::invariant(ctx, state),
     ensures {
         ||| MainlandIn::guard(ctx, state, ())
         ||| MainlandOut::guard(ctx, state, ())

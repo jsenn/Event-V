@@ -128,7 +128,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         impl Machine for #name {
             type Context = #ctx_type;
 
-            open spec fn inv(ctx: Self::Context, state: Self) -> bool {
+            open spec fn invariant(ctx: Self::Context, state: Self) -> bool {
                 state.validate(ctx)
             }
         }
@@ -350,7 +350,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
                 proof fn proof_deadlock_free(ctx: #ctx_type, state: #name)
                     requires
                         ctx.valid(),
-                        #name::inv(ctx, state),
+                        #name::invariant(ctx, state),
                     ensures
                         #guard_disjunction,
                 {}

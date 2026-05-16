@@ -102,7 +102,7 @@ impl Ctx {
 proof fn deadlock_free(ctx: Ctx, state: Abs)
     requires
         ctx.valid(),
-        Abs::inv(ctx, state),
+        Abs::invariant(ctx, state),
         !state.is_done(ctx),
     ensures
         exists |move_to: int| Turn::guard(ctx, state, move_to)

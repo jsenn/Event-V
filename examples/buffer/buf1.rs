@@ -34,7 +34,7 @@ impl State {
 impl Machine for State {
     type Context = buf0::Ctx;
 
-    open spec fn inv(ctx: Self::Context, state: Self) -> bool {
+    open spec fn invariant(ctx: Self::Context, state: Self) -> bool {
         state.validate(ctx)
     }
 }

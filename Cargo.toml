@@ -2,14 +2,17 @@
 members = ["macros"]
 
 [package]
-name = "verus-machine"
+name = "event-v"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vstd = { path = "../verus-src/source/vstd" }
-verus_builtin_macros = { path = "../verus-src/source/builtin_macros" }
-verus-machine-macros = { path = "macros" }
+# The Verus crates are published on crates.io with dated version numbers; the
+# version pinned here must match the `cargo verus` toolchain installed locally.
+# Bump these in lockstep when updating Verus.
+vstd = "=0.0.0-2026-05-10-0145"
+verus_builtin_macros = "=0.0.0-2026-05-10-0145"
+event-v-macros = { path = "macros" }
 num = "0.4"
 rand = "0.8"
 

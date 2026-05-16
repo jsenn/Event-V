@@ -7,11 +7,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# The Verus crates are published on crates.io with dated version numbers; the
-# version pinned here must match the `cargo verus` toolchain installed locally.
-# Bump these in lockstep when updating Verus.
-vstd = "=0.0.0-2026-05-10-0145"
-verus_builtin_macros = "=0.0.0-2026-05-10-0145"
+# Verus crates are pinned to a tagged Verus release so CI can install the
+# matching prebuilt toolchain. Bump `tag` here and VERUS_RELEASE in
+# .github/workflows/ci.yml together when updating Verus.
+vstd = { git = "https://github.com/verus-lang/verus.git", tag = "release/0.2026.05.13.fae8859" }
+verus_builtin_macros = { git = "https://github.com/verus-lang/verus.git", tag = "release/0.2026.05.13.fae8859" }
 event-v-macros = { path = "macros" }
 num = "0.4"
 rand = "0.8"

@@ -20,9 +20,9 @@ deadlock_free machine Ref1 refines abs::Abs {
         cars_to_island: 0,
         cars_on_island: 0,
         cars_to_mainland: 0,
-    },
+    }
 
-    lift: |state| abs::Abs { cars: state.total_cars() },
+    lift: |state| abs::Abs { cars: state.total_cars() }
 
     invariant: |context, state| {
         ||| state.cars_to_island == 0
@@ -34,11 +34,11 @@ deadlock_free machine Ref1 refines abs::Abs {
     }
 
     refined event MainlandIn {
-        guard: |context, state| state.cars_to_mainland > 0,
+        guard: |context, state| state.cars_to_mainland > 0
         action: |context, state| Ref1 {
             cars_to_mainland: (state.cars_to_mainland - 1) as nat,
             ..state
-        },
+        }
     }
 
     refined event MainlandOut {
@@ -49,16 +49,16 @@ deadlock_free machine Ref1 refines abs::Abs {
         action: |context, state| Ref1 {
             cars_to_island: state.cars_to_island + 1,
             ..state
-        },
+        }
     }
 
     concrete event IslandIn {
-        guard: |context, state| state.cars_to_island > 0,
+        guard: |context, state| state.cars_to_island > 0
         action: |context, state| Ref1 {
             cars_to_island: (state.cars_to_island - 1) as nat,
             cars_on_island: state.cars_on_island + 1,
             ..state
-        },
+        }
     }
 
     concrete event IslandOut {
@@ -70,7 +70,7 @@ deadlock_free machine Ref1 refines abs::Abs {
             cars_on_island: (state.cars_on_island - 1) as nat,
             cars_to_mainland: state.cars_to_mainland + 1,
             ..state
-        },
+        }
     }
 }
 

@@ -8,7 +8,7 @@ use quote::quote;
 
 #[proc_macro]
 pub fn machine(input: TokenStream) -> TokenStream {
-    let macro_input = syn::parse_macro_input!(input as parse::MacroInput);
+    let macro_input = verus_syn::parse_macro_input!(input as parse::MacroInput);
 
     let machine_code = macro_input.machine.as_ref().map(|decl| {
         let spec = expand::expand_spec(decl);

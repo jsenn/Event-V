@@ -24,7 +24,7 @@ machine Abs {
     init: |context| Abs {
         player_positions: Seq::new(context.player_count, |i| { 0 }),
         next_player: 0,
-    },
+    }
 
     invariant: |context, state| {
         // Player count can't change

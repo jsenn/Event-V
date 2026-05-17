@@ -35,13 +35,13 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
 
         car_left_mainland: false,
         car_left_island: true,
-    },
+    }
 
     lift: |state| ref1::Ref1 {
         cars_to_island: state.cars_to_island,
         cars_on_island: state.cars_on_island,
         cars_to_mainland: state.cars_to_mainland,
-    },
+    }
 
     invariant: |context, state| {
         // Traffic lights
@@ -61,15 +61,15 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
     }
 
     refined event MainlandIn {
-        guard: |context, state| state.cars_to_mainland > 0,
+        guard: |context, state| state.cars_to_mainland > 0
         action: |context, state| Ref2 {
             cars_to_mainland: (state.cars_to_mainland - 1) as nat,
             ..state
-        },
+        }
     }
 
     refined event MainlandOut {
-        guard: |context, state| state.light_mainland.is_green(),
+        guard: |context, state| state.light_mainland.is_green()
         action: |context, state| Ref2 {
             cars_to_island: state.cars_to_island + 1,
             light_mainland:
@@ -80,20 +80,20 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
                 },
             car_left_mainland: true,
             ..state
-        },
+        }
     }
 
     refined event IslandIn {
-        guard: |context, state| state.cars_to_island > 0,
+        guard: |context, state| state.cars_to_island > 0
         action: |context, state| Ref2 {
             cars_to_island: (state.cars_to_island - 1) as nat,
             cars_on_island: state.cars_on_island + 1,
             ..state
-        },
+        }
     }
 
     refined event IslandOut {
-        guard: |context, state| state.light_island.is_green(),
+        guard: |context, state| state.light_island.is_green()
         action: |context, state| Ref2 {
             cars_on_island: (state.cars_on_island - 1) as nat,
             cars_to_mainland: state.cars_to_mainland + 1,
@@ -105,7 +105,7 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
                 },
             car_left_island: true,
             ..state
-        },
+        }
     }
 
     concrete event TurnGreenMainland {
@@ -120,7 +120,7 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
             light_island: TrafficLight::Red,
             car_left_mainland: false,
             ..state
-        },
+        }
     }
 
     concrete event TurnGreenIsland {
@@ -135,7 +135,7 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
             light_mainland: TrafficLight::Red,
             car_left_island: false,
             ..state
-        },
+        }
     }
 }
 

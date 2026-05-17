@@ -7,7 +7,6 @@ edition = "2021"
 proc-macro = true
 
 [dependencies]
-syn = { version = "2", features = ["full"] }
 verus_syn = { git = "https://github.com/verus-lang/verus.git", tag = "release/0.2026.05.13.fae8859", features = ["full", "printing"] }
 quote = "1"
 proc-macro2 = "1"

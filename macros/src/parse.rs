@@ -1,38 +1,39 @@
-use proc_macro2::{Span, TokenStream, TokenTree};
-use syn::{
+use proc_macro2::{Span, TokenStream};
+use quote::{quote, ToTokens};
+use verus_syn::{
     braced, parenthesized,
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
-    Ident, Path, Result, Token, Type,
+    token, Error, Expr, ExprClosure, Ident, Pat, Path, Result, ReturnType, Token, Type,
 };
 
 mod kw {
-    syn::custom_keyword!(deadlock_free);
-    syn::custom_keyword!(machine);
-    syn::custom_keyword!(refines);
-    syn::custom_keyword!(context);
-    syn::custom_keyword!(valid);
-    syn::custom_keyword!(state);
-    syn::custom_keyword!(init);
-    syn::custom_keyword!(lift);
-    syn::custom_keyword!(lift_context);
-    syn::custom_keyword!(proof_lift_context_valid);
-    syn::custom_keyword!(proof_lift_safe);
-    syn::custom_keyword!(invariant);
-    syn::custom_keyword!(event);
-    syn::custom_keyword!(guard);
-    syn::custom_keyword!(action);
-    syn::custom_keyword!(variant);
-    syn::custom_keyword!(output);
-    syn::custom_keyword!(lift_in);
-    syn::custom_keyword!(lift_out);
-    syn::custom_keyword!(refined);
-    syn::custom_keyword!(concrete);
-    syn::custom_keyword!(proof_safety);
-    syn::custom_keyword!(proof_strengthening);
-    syn::custom_keyword!(proof_simulation);
-    syn::custom_keyword!(proof_convergent);
-    syn::custom_keyword!(proof_stuttering);
+    verus_syn::custom_keyword!(deadlock_free);
+    verus_syn::custom_keyword!(machine);
+    verus_syn::custom_keyword!(refines);
+    verus_syn::custom_keyword!(context);
+    verus_syn::custom_keyword!(valid);
+    verus_syn::custom_keyword!(state);
+    verus_syn::custom_keyword!(init);
+    verus_syn::custom_keyword!(lift);
+    verus_syn::custom_keyword!(lift_context);
+    verus_syn::custom_keyword!(proof_lift_context_valid);
+    verus_syn::custom_keyword!(proof_lift_safe);
+    verus_syn::custom_keyword!(invariant);
+    verus_syn::custom_keyword!(event);
+    verus_syn::custom_keyword!(guard);
+    verus_syn::custom_keyword!(action);
+    verus_syn::custom_keyword!(variant);
+    verus_syn::custom_keyword!(output);
+    verus_syn::custom_keyword!(lift_in);
+    verus_syn::custom_keyword!(lift_out);
+    verus_syn::custom_keyword!(refined);
+    verus_syn::custom_keyword!(concrete);
+    verus_syn::custom_keyword!(proof_safety);
+    verus_syn::custom_keyword!(proof_strengthening);
+    verus_syn::custom_keyword!(proof_simulation);
+    verus_syn::custom_keyword!(proof_convergent);
+    verus_syn::custom_keyword!(proof_stuttering);
 }
 
 pub enum ContextDecl {
@@ -58,7 +59,7 @@ impl ContextDecl {
     pub fn spec_type(&self) -> Type {
         match self {
             ContextDecl::External(ty) => ty.clone(),
-            ContextDecl::Inline { .. } => syn::parse_quote!(Context),
+            ContextDecl::Inline { .. } => verus_syn::parse_quote!(Context),
         }
     }
 }
@@ -162,13 +163,6 @@ pub struct ClosureParam {
     pub ty: Option<Type>,
 }
 
-struct ClosureSig {
-    pipe_span: Span,
-    params: Vec<ClosureParam>,
-    ret_type: Option<Type>,
-    body: TokenStream,
-}
-
 impl Parse for StateField {
     fn parse(input: ParseStream) -> Result<Self> {
         let name: Ident = input.parse()?;
@@ -178,70 +172,101 @@ impl Parse for StateField {
     }
 }
 
-fn parse_closure_param(input: ParseStream, index: usize) -> Result<ClosureParam> {
-    let name = if input.peek(Token![_]) {
-        let underscore = input.parse::<Token![_]>()?;
-        Ident::new(&format!("_p{index}"), underscore.span)
-    } else {
-        input.parse::<Ident>()?
-    };
-    let ty = if input.peek(Token![:]) {
-        input.parse::<Token![:]>()?;
-        Some(input.parse::<Type>()?)
-    } else {
-        None
-    };
-    Ok(ClosureParam { name, ty })
+fn closure_param(pat: &Pat, index: usize) -> Result<ClosureParam> {
+    match pat {
+        Pat::Ident(p) => Ok(ClosureParam {
+            name: p.ident.clone(),
+            ty: None,
+        }),
+        Pat::Wild(w) => Ok(ClosureParam {
+            name: Ident::new(&format!("_p{index}"), w.underscore_token.span),
+            ty: None,
+        }),
+        Pat::Type(p) => {
+            let name = match &*p.pat {
+                Pat::Ident(pi) => pi.ident.clone(),
+                Pat::Wild(w) => Ident::new(&format!("_p{index}"), w.underscore_token.span),
+                other => {
+                    return Err(Error::new_spanned(
+                        other,
+                        "closure parameter must be a plain identifier or `_`",
+                    ))
+                }
+            };
+            Ok(ClosureParam {
+                name,
+                ty: Some((*p.ty).clone()),
+            })
+        }
+        other => Err(Error::new_spanned(
+            other,
+            "closure parameter must be a plain identifier or `_`",
+        )),
+    }
 }
 
-fn parse_closure(input: ParseStream) -> Result<ClosureSig> {
-    let pipe_span = input.span();
+fn closure_params(closure: &ExprClosure) -> Result<Vec<ClosureParam>> {
+    closure
+        .inputs
+        .iter()
+        .enumerate()
+        .map(|(i, arg)| closure_param(&arg.pat, i))
+        .collect()
+}
 
-    let mut params = Vec::new();
-    if input.peek(Token![||]) {
-        input.parse::<Token![||]>()?;
-    } else {
-        input.parse::<Token![|]>()?;
-        while !input.peek(Token![|]) {
-            params.push(parse_closure_param(input, params.len())?);
-            if input.peek(Token![,]) {
-                input.parse::<Token![,]>()?;
-            } else {
-                break;
-            }
+fn body_tokens(body: &Expr) -> TokenStream {
+    match body {
+        Expr::Block(b) if b.attrs.is_empty() && b.label.is_none() => {
+            let stmts = &b.block.stmts;
+            quote! { #(#stmts)* }
         }
-        input.parse::<Token![|]>()?;
+        other => other.to_token_stream(),
     }
+}
 
-    let ret_type = if input.peek(Token![->]) {
-        input.parse::<Token![->]>()?;
-        Some(input.parse::<Type>()?)
-    } else {
-        None
-    };
+fn reject_output(closure: &ExprClosure, what: &str) -> Result<()> {
+    if !matches!(closure.output, ReturnType::Default) {
+        return Err(Error::new_spanned(
+            &closure.output,
+            format!("the `{what}` closure must not declare a return type"),
+        ));
+    }
+    Ok(())
+}
 
-    let body = if input.peek(syn::token::Brace) {
-        let content;
-        braced!(content in input);
-        content.parse::<TokenStream>()?
-    } else {
-        if ret_type.is_some() {
-            return Err(input.error("a closure with a return type must have a `{ ... }` body"));
-        }
-        let mut tokens = Vec::new();
-        while !input.is_empty() && !input.peek(Token![,]) {
-            tokens.push(input.parse::<TokenTree>()?);
-        }
-        if tokens.is_empty() {
-            return Err(input.error("expected a closure body after `|...|`"));
-        }
-        tokens.into_iter().collect()
-    };
+fn closure_1(closure: ExprClosure, what: &str) -> Result<(ClosureParam, TokenStream)> {
+    reject_output(&closure, what)?;
+    let mut params = closure_params(&closure)?;
+    if params.len() != 1 {
+        return Err(Error::new_spanned(
+            &closure.or1_token,
+            format!("the `{what}` closure expects one parameter, like `|context|`"),
+        ));
+    }
+    Ok((params.remove(0), body_tokens(&closure.body)))
+}
 
-    Ok(ClosureSig {
-        pipe_span,
-        params,
-        ret_type,
+fn closure_2(closure: ExprClosure, what: &str) -> Result<(ClosureParam, ClosureParam, TokenStream)> {
+    reject_output(&closure, what)?;
+    let mut params = closure_params(&closure)?;
+    if params.len() != 2 {
+        return Err(Error::new_spanned(
+            &closure.or1_token,
+            format!("the `{what}` closure expects two parameters, like `|context, state|`"),
+        ));
+    }
+    let body = body_tokens(&closure.body);
+    let state = params.remove(1);
+    let context = params.remove(0);
+    Ok((context, state, body))
+}
+
+fn fn_body(closure: ExprClosure, what: &str, span: Span) -> Result<FnBody> {
+    let (context, state, body) = closure_2(closure, what)?;
+    Ok(FnBody {
+        span,
+        context,
+        state,
         body,
     })
 }
@@ -251,51 +276,6 @@ fn eat_comma(input: ParseStream) -> Result<()> {
         input.parse::<Token![,]>()?;
     }
     Ok(())
-}
-
-fn reject_ret_type(c: &ClosureSig, what: &str) -> Result<()> {
-    if c.ret_type.is_some() {
-        return Err(syn::Error::new(
-            c.pipe_span,
-            format!("the `{what}` closure must not declare a return type"),
-        ));
-    }
-    Ok(())
-}
-
-fn closure_1(c: ClosureSig, what: &str) -> Result<(ClosureParam, TokenStream)> {
-    reject_ret_type(&c, what)?;
-    if c.params.len() != 1 {
-        return Err(syn::Error::new(
-            c.pipe_span,
-            format!("the `{what}` closure expects one parameter, like `|context|`"),
-        ));
-    }
-    let body = c.body;
-    Ok((c.params.into_iter().next().unwrap(), body))
-}
-
-fn closure_2(c: ClosureSig, what: &str) -> Result<(ClosureParam, ClosureParam, TokenStream)> {
-    reject_ret_type(&c, what)?;
-    if c.params.len() != 2 {
-        return Err(syn::Error::new(
-            c.pipe_span,
-            format!("the `{what}` closure expects two parameters, like `|context, state|`"),
-        ));
-    }
-    let body = c.body;
-    let mut it = c.params.into_iter();
-    Ok((it.next().unwrap(), it.next().unwrap(), body))
-}
-
-fn fn_body(c: ClosureSig, what: &str, span: Span) -> Result<FnBody> {
-    let (context, state, body) = closure_2(c, what)?;
-    Ok(FnBody {
-        span,
-        context,
-        state,
-        body,
-    })
 }
 
 fn parse_event(content: ParseStream) -> Result<EventDecl> {
@@ -319,7 +299,7 @@ fn parse_event(content: ParseStream) -> Result<EventDecl> {
     let name: Ident = content.parse()?;
 
     // Parse optional input: event Name(param: Type)
-    let input = if content.peek(syn::token::Paren) {
+    let input = if content.peek(token::Paren) {
         let params;
         parenthesized!(params in content);
         let param_name: Ident = params.parse()?;
@@ -359,19 +339,19 @@ fn parse_event(content: ParseStream) -> Result<EventDecl> {
         if event_content.peek(kw::guard) {
             let kw = event_content.parse::<kw::guard>()?;
             event_content.parse::<Token![:]>()?;
-            guard = Some(fn_body(parse_closure(&event_content)?, "guard", kw.span)?);
+            guard = Some(fn_body(event_content.parse()?, "guard", kw.span)?);
         } else if event_content.peek(kw::action) {
             let kw = event_content.parse::<kw::action>()?;
             event_content.parse::<Token![:]>()?;
-            action = Some(fn_body(parse_closure(&event_content)?, "action", kw.span)?);
+            action = Some(fn_body(event_content.parse()?, "action", kw.span)?);
         } else if event_content.peek(kw::output) {
             let kw = event_content.parse::<kw::output>()?;
             event_content.parse::<Token![:]>()?;
-            output = Some(fn_body(parse_closure(&event_content)?, "output", kw.span)?);
+            output = Some(fn_body(event_content.parse()?, "output", kw.span)?);
         } else if event_content.peek(kw::lift_in) {
             event_content.parse::<kw::lift_in>()?;
             event_content.parse::<Token![:]>()?;
-            let (context, state, body) = closure_2(parse_closure(&event_content)?, "lift_in")?;
+            let (context, state, body) = closure_2(event_content.parse()?, "lift_in")?;
             lift_in = Some(LiftInFn {
                 context,
                 state,
@@ -380,44 +360,32 @@ fn parse_event(content: ParseStream) -> Result<EventDecl> {
         } else if event_content.peek(kw::lift_out) {
             event_content.parse::<kw::lift_out>()?;
             event_content.parse::<Token![:]>()?;
-            let (param, body) = closure_1(parse_closure(&event_content)?, "lift_out")?;
+            let (param, body) = closure_1(event_content.parse()?, "lift_out")?;
             lift_out = Some(LiftFn { param, body });
         } else if event_content.peek(kw::proof_safety) {
             let kw = event_content.parse::<kw::proof_safety>()?;
             event_content.parse::<Token![:]>()?;
-            safety_proof = Some(fn_body(parse_closure(&event_content)?, "proof_safety", kw.span)?);
+            safety_proof = Some(fn_body(event_content.parse()?, "proof_safety", kw.span)?);
         } else if event_content.peek(kw::proof_strengthening) {
             let kw = event_content.parse::<kw::proof_strengthening>()?;
             event_content.parse::<Token![:]>()?;
-            strengthening_proof = Some(fn_body(
-                parse_closure(&event_content)?,
-                "proof_strengthening",
-                kw.span,
-            )?);
+            strengthening_proof =
+                Some(fn_body(event_content.parse()?, "proof_strengthening", kw.span)?);
         } else if event_content.peek(kw::proof_simulation) {
             let kw = event_content.parse::<kw::proof_simulation>()?;
             event_content.parse::<Token![:]>()?;
-            simulation_proof = Some(fn_body(
-                parse_closure(&event_content)?,
-                "proof_simulation",
-                kw.span,
-            )?);
+            simulation_proof =
+                Some(fn_body(event_content.parse()?, "proof_simulation", kw.span)?);
         } else if event_content.peek(kw::proof_convergent) {
             let kw = event_content.parse::<kw::proof_convergent>()?;
             event_content.parse::<Token![:]>()?;
-            convergence_proof = Some(fn_body(
-                parse_closure(&event_content)?,
-                "proof_convergent",
-                kw.span,
-            )?);
+            convergence_proof =
+                Some(fn_body(event_content.parse()?, "proof_convergent", kw.span)?);
         } else if event_content.peek(kw::proof_stuttering) {
             let kw = event_content.parse::<kw::proof_stuttering>()?;
             event_content.parse::<Token![:]>()?;
-            stuttering_proof = Some(fn_body(
-                parse_closure(&event_content)?,
-                "proof_stuttering",
-                kw.span,
-            )?);
+            stuttering_proof =
+                Some(fn_body(event_content.parse()?, "proof_stuttering", kw.span)?);
         } else {
             return Err(event_content.error(
                 "expected 'guard', 'action', 'output', 'lift_in', 'lift_out', or a proof block",
@@ -433,8 +401,8 @@ fn parse_event(content: ParseStream) -> Result<EventDecl> {
         name,
         input,
         output_type,
-        guard: guard.ok_or_else(|| syn::Error::new(name_span, "event missing 'guard'"))?,
-        action: action.ok_or_else(|| syn::Error::new(name_span, "event missing 'action'"))?,
+        guard: guard.ok_or_else(|| Error::new(name_span, "event missing 'guard'"))?,
+        action: action.ok_or_else(|| Error::new(name_span, "event missing 'action'"))?,
         output,
         lift_in,
         lift_out,
@@ -518,7 +486,7 @@ impl Parse for MachineDecl {
             if content.peek(kw::valid) {
                 content.parse::<kw::valid>()?;
                 content.parse::<Token![:]>()?;
-                let (param, body) = closure_1(parse_closure(&content)?, "valid")?;
+                let (param, body) = closure_1(content.parse()?, "valid")?;
                 match &mut context {
                     ContextDecl::Inline { valid, .. } => {
                         *valid = Some(ValidDecl {
@@ -527,8 +495,8 @@ impl Parse for MachineDecl {
                         });
                     }
                     ContextDecl::External(_) => {
-                        return Err(syn::Error::new(
-                            param.name.span(),
+                        return Err(Error::new_spanned(
+                            &param.name,
                             "'valid' can only be used with an inline `context { ... }` declaration",
                         ));
                     }
@@ -543,33 +511,31 @@ impl Parse for MachineDecl {
             } else if content.peek(kw::init) {
                 content.parse::<kw::init>()?;
                 content.parse::<Token![:]>()?;
-                let (context, body) = closure_1(parse_closure(&content)?, "init")?;
+                let (context, body) = closure_1(content.parse()?, "init")?;
                 init = Some(InitDecl { context, body });
             } else if content.peek(kw::lift) {
                 content.parse::<kw::lift>()?;
                 content.parse::<Token![:]>()?;
-                let (state, body) = closure_1(parse_closure(&content)?, "lift")?;
+                let (state, body) = closure_1(content.parse()?, "lift")?;
                 lift = Some(LiftDecl { state, body });
             } else if content.peek(kw::lift_context) {
                 content.parse::<kw::lift_context>()?;
                 content.parse::<Token![:]>()?;
-                let (context, body) = closure_1(parse_closure(&content)?, "lift_context")?;
+                let (context, body) = closure_1(content.parse()?, "lift_context")?;
                 lift_context = Some(LiftContextDecl { context, body });
             } else if content.peek(kw::proof_lift_context_valid) {
                 content.parse::<kw::proof_lift_context_valid>()?;
                 content.parse::<Token![:]>()?;
-                let (context, body) =
-                    closure_1(parse_closure(&content)?, "proof_lift_context_valid")?;
+                let (context, body) = closure_1(content.parse()?, "proof_lift_context_valid")?;
                 proof_lift_context_valid = Some(LiftContextDecl { context, body });
             } else if content.peek(kw::proof_lift_safe) {
                 let kw = content.parse::<kw::proof_lift_safe>()?;
                 content.parse::<Token![:]>()?;
-                proof_lift_safe =
-                    Some(fn_body(parse_closure(&content)?, "proof_lift_safe", kw.span)?);
+                proof_lift_safe = Some(fn_body(content.parse()?, "proof_lift_safe", kw.span)?);
             } else if content.peek(kw::invariant) {
                 content.parse::<kw::invariant>()?;
                 content.parse::<Token![:]>()?;
-                let (context, state, body) = closure_2(parse_closure(&content)?, "invariant")?;
+                let (context, state, body) = closure_2(content.parse()?, "invariant")?;
                 invariant = Some(InvariantDecl {
                     context,
                     state,
@@ -578,25 +544,30 @@ impl Parse for MachineDecl {
             } else if content.peek(kw::variant) {
                 content.parse::<kw::variant>()?;
                 content.parse::<Token![:]>()?;
-                let c = parse_closure(&content)?;
-                if c.params.len() != 2 {
-                    return Err(syn::Error::new(
-                        c.pipe_span,
+                let closure: ExprClosure = content.parse()?;
+                let mut params = closure_params(&closure)?;
+                if params.len() != 2 {
+                    return Err(Error::new_spanned(
+                        &closure.or1_token,
                         "the `variant` closure expects two parameters, like `|context, state|`",
                     ));
                 }
-                let ret_type = c.ret_type.clone().ok_or_else(|| {
-                    syn::Error::new(
-                        c.pipe_span,
-                        "`variant` must declare its return type, like \
-                         `variant: |context, state| -> (nat, nat) { ... }`",
-                    )
-                })?;
-                let body = c.body;
-                let mut params = c.params.into_iter();
+                let ret_type = match &closure.output {
+                    ReturnType::Type(.., ty) => (**ty).clone(),
+                    ReturnType::Default => {
+                        return Err(Error::new_spanned(
+                            &closure.or2_token,
+                            "`variant` must declare its return type, like \
+                             `variant: |context, state| -> (nat, nat) { ... }`",
+                        ));
+                    }
+                };
+                let body = body_tokens(&closure.body);
+                let state = params.remove(1);
+                let context = params.remove(0);
                 variant = Some(VariantDecl {
-                    context: params.next().unwrap(),
-                    state: params.next().unwrap(),
+                    context,
+                    state,
                     ret_type,
                     body,
                 });
@@ -622,7 +593,7 @@ impl Parse for MachineDecl {
             refines,
             context,
             state_fields: state_fields.unwrap_or_default(),
-            init: init.ok_or_else(|| syn::Error::new(name_span, "missing 'init' block"))?,
+            init: init.ok_or_else(|| Error::new(name_span, "missing 'init' block"))?,
             lift,
             lift_context,
             proof_lift_context_valid,

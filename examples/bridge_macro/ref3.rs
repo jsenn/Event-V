@@ -83,7 +83,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
             sensor_island_in: Sensor::Off,
             sensor_island_out: Sensor::Off,
         },
-    },
+    }
 
     lift: |state| ref2::Ref2 {
         cars_to_island: state.con.cars_to_island,
@@ -95,7 +95,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
 
         car_left_mainland: state.con.car_left_mainland,
         car_left_island: state.con.car_left_island,
-    },
+    }
 
     invariant: |context, state| {
         // Sensors detect the presence of physical cars
@@ -168,7 +168,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
                 ..state.con
             },
             ..state
-        },
+        }
     }
 
     refined event MainlandOut {
@@ -189,7 +189,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
                 ..state.con
             },
             ..state
-        },
+        }
     }
 
     refined event IslandIn {
@@ -205,7 +205,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
                 ..state.con
             },
             ..state
-        },
+        }
     }
 
     refined event IslandOut {
@@ -227,7 +227,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
                 ..state.con
             },
             ..state
-        },
+        }
     }
 
     refined event TurnGreenMainland {
@@ -246,7 +246,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
                 ..state.con
             },
             ..state
-        },
+        }
     }
 
     refined event TurnGreenIsland {
@@ -265,7 +265,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
                 ..state.con
             },
             ..state
-        },
+        }
     }
 
     concrete event SensorMainlandOutArrive {
@@ -279,7 +279,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
                 ..state.env
             },
             ..state
-        },
+        }
     }
 
     concrete event SensorMainlandInArrive {
@@ -294,7 +294,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
                 ..state.env
             },
             ..state
-        },
+        }
     }
 
     concrete event SensorIslandOutArrive {
@@ -309,7 +309,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
                 ..state.env
             },
             ..state
-        },
+        }
     }
 
     concrete event SensorIslandInArrive {
@@ -324,7 +324,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
                 ..state.env
             },
             ..state
-        },
+        }
     }
 
     concrete event SensorMainlandOutDepart {
@@ -343,11 +343,11 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
                 ..state.env
             },
             ..state
-        },
+        }
     }
 
     concrete event SensorMainlandInDepart {
-        guard: |context, state| state.env.sensor_mainland_in.is_on(),
+        guard: |context, state| state.env.sensor_mainland_in.is_on()
         action: |context, state| Ref3 {
             con: Controller {
                 flag_entered_mainland: Flag::Set,
@@ -359,7 +359,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
                 ..state.env
             },
             ..state
-        },
+        }
     }
 
     concrete event SensorIslandOutDepart {
@@ -379,11 +379,11 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
                 ..state.env
             },
             ..state
-        },
+        }
     }
 
     concrete event SensorIslandInDepart {
-        guard: |context, state| state.env.sensor_island_in.is_on(),
+        guard: |context, state| state.env.sensor_island_in.is_on()
         action: |context, state| Ref3 {
             con: Controller {
                 flag_entered_island: Flag::Set,
@@ -396,7 +396,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
                 ..state.env
             },
             ..state
-        },
+        }
     }
 }
 

@@ -51,17 +51,17 @@ machine Board refines abs::Abs {
     lift_context: |context| abs::Context {
         board_size: context.board.len(),
         player_count: context.player_count,
-    },
+    }
 
     lift: |state| abs::Abs {
         player_positions: state.player_positions,
         next_player: state.next_player,
-    },
+    }
 
     init: |context| Board {
         player_positions: Seq::new(context.player_count, |i| { 0 }),
         next_player: 0,
-    },
+    }
 
     invariant: |context, state| {
         // Players can't sit at the top of a snake or the bottom of a ladder
@@ -71,7 +71,7 @@ machine Board refines abs::Abs {
     }
 
     refined event Turn(roll: DiceRoll) {
-        lift_in: |context, state| state.take_turn(context, roll),
+        lift_in: |context, state| state.take_turn(context, roll)
 
         guard: |context, state| {
             // Game not over

@@ -1,16 +1,16 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, quote_spanned, ToTokens};
-use syn::Path;
+use verus_syn::{Error, Ident, Path, PathArguments};
 
 use crate::parse::*;
 
 /// Given a refines path like `abs::Abs`, replace the last segment with `event_name`
 /// to produce `abs::MainlandIn` etc.
-fn abstract_event_path(refines_path: &Path, event_name: &syn::Ident) -> TokenStream {
+fn abstract_event_path(refines_path: &Path, event_name: &Ident) -> TokenStream {
     let mut path = refines_path.clone();
     if let Some(last) = path.segments.last_mut() {
         last.ident = event_name.clone();
-        last.arguments = syn::PathArguments::None;
+        last.arguments = PathArguments::None;
     }
     quote! { #path }
 }
@@ -37,7 +37,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
 
     if decl.refines.is_none() {
         if let Some(evt) = decl.events.iter().find(|e| e.concrete) {
-            return syn::Error::new(
+            return Error::new(
                 evt.name.span(),
                 "'concrete' events may only appear in a machine that 'refines' another \
                  (a concrete event is one introduced by a refinement that has no abstract counterpart); \
@@ -46,21 +46,21 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             .to_compile_error();
         }
         if let Some(lc) = &decl.lift_context {
-            return syn::Error::new(
+            return Error::new(
                 lc.context.name.span(),
                 "'lift_context' may only appear in a machine that 'refines' another",
             )
             .to_compile_error();
         }
         if let Some(p) = &decl.proof_lift_context_valid {
-            return syn::Error::new(
+            return Error::new(
                 p.context.name.span(),
                 "'proof_lift_context_valid' may only appear in a machine that 'refines' another",
             )
             .to_compile_error();
         }
         if let Some(p) = &decl.proof_lift_safe {
-            return syn::Error::new(
+            return Error::new(
                 p.span,
                 "'proof_lift_safe' may only appear in a machine that 'refines' another",
             )
@@ -85,7 +85,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
     //
     // The context lift is `<Self as Lift<ConcreteContext, AbstractContext>>::lift` — written fully
     // qualified because the machine carries two `Lift` impls (state and context).
-    let lifted_context = |context_ident: &syn::Ident| -> TokenStream {
+    let lifted_context = |context_ident: &Ident| -> TokenStream {
         match &decl.refines {
             Some(refines_path) => quote! {
                 <#name as Lift<#context_type, <#refines_path as Machine>::Context>>::lift(#context_ident)
@@ -120,7 +120,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             }
         }
     } else if decl.refines.is_some() {
-        let context_ident = syn::Ident::new("context", name.span());
+        let context_ident = Ident::new("context", name.span());
         let lifted = lifted_context(&context_ident);
         quote! {
             impl #name {
@@ -174,7 +174,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         let lift_decl = match &decl.lift {
             Some(l) => l,
             None => {
-                return syn::Error::new(
+                return Error::new(
                     name.span(),
                     "a machine that 'refines' another must declare a 'lift: |state| ...' block",
                 )
@@ -234,7 +234,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
 
     // --- Refinement impl ---
     let refinement_impl = if let Some(ref refines_path) = decl.refines {
-        let abstract_init = abstract_event_path(refines_path, &syn::Ident::new("Initialize", name.span()));
+        let abstract_init = abstract_event_path(refines_path, &Ident::new("Initialize", name.span()));
         let has_concrete_event = decl.events.iter().any(|e| e.concrete);
         let convergent_impl = match (&decl.variant, has_concrete_event) {
             (Some(v), _) => {
@@ -253,7 +253,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
                 }
             }
             (None, true) => {
-                let err = syn::Error::new(
+                let err = Error::new(
                     name.span(),
                     "machine with 'concrete' events must declare a machine-level 'variant: |context, state| -> Type { ... }' block",
                 );
@@ -323,7 +323,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
     // is unreliable).
     let deadlock_proof = if decl.deadlock_free {
         if decl.events.is_empty() {
-            syn::Error::new(
+            Error::new(
                 name.span(),
                 "'deadlock_free' machine must declare at least one event \
                  (a machine with no events is trivially deadlocked)",
@@ -553,7 +553,7 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
                     }
                 }
             } else if evt.input.is_some() {
-                return syn::Error::new(
+                return Error::new(
                     evt.name.span(),
                     "refined event with an input must declare a 'lift_in: |context, state| ...' \
                      block mapping the concrete input to the abstract input",

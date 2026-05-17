@@ -321,15 +321,33 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
     // For events with non-() Input, witness the existential via `exists|x: T| guard(..., x)`.
     // For () Input, call the guard directly (Verus's auto-witness of `()` in an existential
     // is unreliable).
-    let deadlock_proof = if decl.deadlock_free {
+    let deadlock_proof = if let Some(dl_span) = decl.deadlock_free {
         if decl.events.is_empty() {
             Error::new(
-                name.span(),
+                dl_span,
                 "'deadlock_free' machine must declare at least one event \
                  (a machine with no events is trivially deadlocked)",
             )
             .to_compile_error()
         } else {
+            // The context/state parameter names are fixed for the auto-generated
+            // proof, but taken from the closure for a user-supplied one.
+            let (ctx, state_ident, ctx_sig, state_sig) = match &decl.proof_deadlock_free {
+                Some(p) => (
+                    p.context.name.clone(),
+                    p.state.name.clone(),
+                    typed_param(&p.context, &context_type),
+                    typed_param(&p.state, name),
+                ),
+                None => {
+                    let ctx = Ident::new("context", dl_span);
+                    let state_ident = Ident::new("state", dl_span);
+                    let ctx_sig = quote! { #ctx: #context_type };
+                    let state_sig = quote! { #state_ident: #name };
+                    (ctx, state_ident, ctx_sig, state_sig)
+                }
+            };
+
             let guards: Vec<_> = decl
                 .events
                 .iter()
@@ -344,9 +362,9 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
                         // arithmetic / built-ins that Verus rejects as triggers.
                         // Keeping `Event::guard(...)` as the trigger pattern
                         // preserves a well-formed quantifier regardless of body.
-                        quote! { exists|#pname: #pty| #[trigger] #ename::guard(context, state, #pname) }
+                        quote! { exists|#pname: #pty| #[trigger] #ename::guard(#ctx, #state_ident, #pname) }
                     } else {
-                        quote! { #ename::guard(context, state, ()) }
+                        quote! { #ename::guard(#ctx, #state_ident, ()) }
                     }
                 })
                 .collect();
@@ -359,18 +377,78 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
                 quote! { #first #(|| #rest)* }
             };
 
-            let dl_span = name.span();
-            quote_spanned! { dl_span =>
-                proof fn proof_deadlock_free(context: #context_type, state: #name)
+            let proof_signature = quote! {
+                proof fn proof_deadlock_free(#ctx_sig, #state_sig)
                     requires
-                        context.valid(),
-                        #name::invariant(context, state),
+                        #ctx.valid(),
+                        #name::invariant(#ctx, #state_ident),
                     ensures
                         #guard_disjunction,
-                {}
+            };
+
+            match &decl.proof_deadlock_free {
+                Some(p) => {
+                    let body = &p.body;
+                    quote_spanned! { dl_span =>
+                        #proof_signature
+                        {
+                            #body
+                        }
+                    }
+                }
+                None => {
+                    // No user proof: route the obligation through a helper whose
+                    // `custom_err` reproduces the disjunction as a ready-to-paste
+                    // `proof_deadlock_free` block, so a failure is actionable.
+                    let disjuncts: Vec<String> = decl
+                        .events
+                        .iter()
+                        .map(|evt| {
+                            let ename = &evt.name;
+                            match &evt.input {
+                                Some(param) => {
+                                    let pname = &param.name;
+                                    let pty = param.ty.to_token_stream().to_string();
+                                    format!("exists|{pname}: {pty}| #[trigger] {ename}::guard(context, state, {pname})")
+                                }
+                                None => format!("{ename}::guard(context, state, ())"),
+                            }
+                        })
+                        .collect();
+                    let msg = format!(
+                        "machine `{}` is declared `deadlock_free`, but Verus could not \
+                         prove it automatically -- it may deadlock. To debug, paste this \
+                         into the machine and refine it with `assert`: \
+                         proof_deadlock_free: |context, state| {{ assert({}); }}",
+                        name,
+                        disjuncts.join(" || "),
+                    );
+                    quote_spanned! { dl_span =>
+                        proof fn deadlock_obligation(b: bool)
+                            requires
+                                #![verifier::custom_err(#msg)]
+                                b,
+                            ensures
+                                b,
+                        {
+                        }
+
+                        #proof_signature
+                        {
+                            deadlock_obligation(#guard_disjunction);
+                        }
+                    }
+                }
             }
         }
     } else {
+        if let Some(p) = &decl.proof_deadlock_free {
+            return Error::new(
+                p.span,
+                "'proof_deadlock_free' may only appear in a 'deadlock_free' machine",
+            )
+            .to_compile_error();
+        }
         quote! {}
     };
 

@@ -19,6 +19,7 @@ mod kw {
     verus_syn::custom_keyword!(lift_context);
     verus_syn::custom_keyword!(proof_lift_context_valid);
     verus_syn::custom_keyword!(proof_lift_safe);
+    verus_syn::custom_keyword!(proof_deadlock_free);
     verus_syn::custom_keyword!(invariant);
     verus_syn::custom_keyword!(event);
     verus_syn::custom_keyword!(guard);
@@ -69,7 +70,7 @@ pub struct MacroInput {
 }
 
 pub struct MachineDecl {
-    pub deadlock_free: bool,
+    pub deadlock_free: Option<Span>,
     pub name: Ident,
     pub refines: Option<Path>,
     pub context: ContextDecl,
@@ -79,6 +80,7 @@ pub struct MachineDecl {
     pub lift_context: Option<LiftContextDecl>,
     pub proof_lift_context_valid: Option<LiftContextDecl>,
     pub proof_lift_safe: Option<FnBody>,
+    pub proof_deadlock_free: Option<FnBody>,
     pub invariant: Option<InvariantDecl>,
     pub variant: Option<VariantDecl>,
     pub events: Vec<EventDecl>,
@@ -428,10 +430,11 @@ impl Parse for MacroInput {
 impl Parse for MachineDecl {
     fn parse(input: ParseStream) -> Result<Self> {
         // Parse optional 'deadlock_free'
-        let deadlock_free = input.peek(kw::deadlock_free);
-        if deadlock_free {
-            input.parse::<kw::deadlock_free>()?;
-        }
+        let deadlock_free = if input.peek(kw::deadlock_free) {
+            Some(input.parse::<kw::deadlock_free>()?.span)
+        } else {
+            None
+        };
 
         // Parse 'machine'
         input.parse::<kw::machine>()?;
@@ -478,6 +481,7 @@ impl Parse for MachineDecl {
         let mut lift_context = None;
         let mut proof_lift_context_valid = None;
         let mut proof_lift_safe = None;
+        let mut proof_deadlock_free = None;
         let mut invariant = None;
         let mut variant = None;
         let mut events = Vec::new();
@@ -532,6 +536,11 @@ impl Parse for MachineDecl {
                 let kw = content.parse::<kw::proof_lift_safe>()?;
                 content.parse::<Token![:]>()?;
                 proof_lift_safe = Some(fn_body(content.parse()?, "proof_lift_safe", kw.span)?);
+            } else if content.peek(kw::proof_deadlock_free) {
+                let kw = content.parse::<kw::proof_deadlock_free>()?;
+                content.parse::<Token![:]>()?;
+                proof_deadlock_free =
+                    Some(fn_body(content.parse()?, "proof_deadlock_free", kw.span)?);
             } else if content.peek(kw::invariant) {
                 content.parse::<kw::invariant>()?;
                 content.parse::<Token![:]>()?;
@@ -579,8 +588,8 @@ impl Parse for MachineDecl {
             } else {
                 return Err(content.error(
                     "expected 'state', 'valid', 'init', 'lift', 'lift_context', \
-                     'proof_lift_context_valid', 'proof_lift_safe', 'invariant', 'variant', \
-                     or an event declaration",
+                     'proof_lift_context_valid', 'proof_lift_safe', 'proof_deadlock_free', \
+                     'invariant', 'variant', or an event declaration",
                 ));
             }
             eat_comma(&content)?;
@@ -598,6 +607,7 @@ impl Parse for MachineDecl {
             lift_context,
             proof_lift_context_valid,
             proof_lift_safe,
+            proof_deadlock_free,
             invariant,
             variant,
             events,

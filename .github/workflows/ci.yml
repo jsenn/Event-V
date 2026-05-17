@@ -35,23 +35,5 @@ jobs:
           unzip -q "$RUNNER_TEMP/verus.zip" -d "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/verus-x86-linux" >> "$GITHUB_PATH"
 
-      - name: Verify library
-        run: |
-          cargo verus build 2>&1 | tee verus.log
-          if grep -Eq 'error:|warning:' verus.log; then
-            echo "::error::cargo verus build reported errors or warnings"
-            exit 1
-          fi
-
-      - name: Verify examples
-        run: |
-          for dir in examples/*/; do
-            example="$(basename "$dir")"
-            echo "::group::cargo verus build --example $example"
-            cargo verus build --example "$example" 2>&1 | tee "verus-$example.log"
-            if grep -Eq 'error:|warning:' "verus-$example.log"; then
-              echo "::error::example $example reported errors or warnings"
-              exit 1
-            fi
-            echo "::endgroup::"
-          done
+      - name: Verify library and examples
+        run: ./verify.sh

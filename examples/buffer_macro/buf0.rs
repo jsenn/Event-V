@@ -6,32 +6,32 @@ use event_v::machine;
 machine! {
 
 deadlock_free machine Buf0 {
-    ctx {
+    context {
         max_size: nat,
     }
 
-    valid(ctx) {
-        ctx.max_size > 0
+    valid(context) {
+        context.max_size > 0
     }
 
     state {
         size: nat,
     }
 
-    init(ctx) {
+    init(context) {
         size: 0
     }
 
-    invariant(ctx, state) {
-        state.size <= ctx.max_size
+    invariant(context, state) {
+        state.size <= context.max_size
     }
 
     event Put {
-        guard(ctx, state) {
-            state.size < ctx.max_size
+        guard(context, state) {
+            state.size < context.max_size
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Buf0 {
                 size: state.size + 1,
             }
@@ -39,11 +39,11 @@ deadlock_free machine Buf0 {
     }
 
     event Fetch {
-        guard(ctx, state) {
+        guard(context, state) {
             state.size > 0
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Buf0 {
                 size: (state.size - 1) as nat,
             }
@@ -51,15 +51,15 @@ deadlock_free machine Buf0 {
     }
 
     event GetSize -> nat {
-        guard(ctx, state) {
+        guard(context, state) {
             true
         }
 
-        action(ctx, state) {
+        action(context, state) {
             state
         }
 
-        output(ctx, state) {
+        output(context, state) {
             state.size
         }
     }

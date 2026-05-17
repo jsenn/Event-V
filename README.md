@@ -14,14 +14,14 @@ machine! {
 machine Counter {
     // Declare the **context** struct for the machine. This contains configuration that does not
     // change through the machine's lifetime.
-    ctx {
+    context {
         max_value: nat,
     }
 
-    valid(ctx) {
+    valid(context) {
         // A counter with `max_value == 0` could never be incremented or decremented, which would
         // be quite boring
-        ctx.max_value > 0
+        context.max_value > 0
     }
 
     // Declare the **state** struct. Unlike the context, the state can be changed by events.
@@ -32,7 +32,7 @@ machine Counter {
     }
 
     // This machine has a single **initialization event**, which sets the counter's value to 0.
-    init(ctx) {
+    init(context) {
         value: 0
     }
 
@@ -40,8 +40,8 @@ machine Counter {
     // For our counter machine, the invariant is that the value does not exceed the configured
     // `max_value`. Note that because the value is declared as `nat`, it must also be non-negative,
     // but we don't have to explicitly add that in the invariant.
-    invariant(ctx, state) {
-        state.value <= ctx.max_value
+    invariant(context, state) {
+        state.value <= context.max_value
     }
 
     // The machine's first event increments the counter by 1. It may only fire if the current value
@@ -49,13 +49,13 @@ machine Counter {
     event Increment {
         // An event's **guard** determines when it is valid for the event to fire. In this case, we
         // may only increment a counter whose value is less than the max value.
-        guard(ctx, state) {
-            state.value < ctx.max_value
+        guard(context, state) {
+            state.value < context.max_value
         }
 
         // The **action** for an event defines how the machine's state changes after the event
         // fires. In this case, the post-action state has its value incremented by 1.
-        action(ctx, state) {
+        action(context, state) {
             Counter {
                 value: state.value + 1,
             }
@@ -65,11 +65,11 @@ machine Counter {
     // The Decrement event is similar in structure to Increment, except that its guard requires
     // that the current value be greater than zero.
     event Decrement {
-        guard(ctx, state) {
+        guard(context, state) {
             state.value > 0
         }
 
-        action(ctx, state) {
+        action(context, state) {
             // Subtracting two `nat`s produces an `int` in Verus. The `as nat` below casts it back
             // to `nat`.
             Counter {

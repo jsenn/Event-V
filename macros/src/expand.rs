@@ -17,7 +17,7 @@ fn abstract_event_path(refines_path: &Path, event_name: &syn::Ident) -> TokenStr
 
 pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
     let name = &decl.name;
-    let ctx_type = decl.ctx.spec_type();
+    let context_type = decl.context.spec_type();
 
     if decl.refines.is_none() {
         if let Some(evt) = decl.events.iter().find(|e| e.concrete) {
@@ -29,17 +29,17 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             )
             .to_compile_error();
         }
-        if let Some(lc) = &decl.lift_ctx {
+        if let Some(lc) = &decl.lift_context {
             return syn::Error::new(
-                lc.ctx_name.span(),
-                "'lift_ctx' may only appear in a machine that 'refines' another",
+                lc.context_name.span(),
+                "'lift_context' may only appear in a machine that 'refines' another",
             )
             .to_compile_error();
         }
-        if let Some(p) = &decl.proof_lift_ctx_valid {
+        if let Some(p) = &decl.proof_lift_context_valid {
             return syn::Error::new(
-                p.ctx_name.span(),
-                "'proof_lift_ctx_valid' may only appear in a machine that 'refines' another",
+                p.context_name.span(),
+                "'proof_lift_context_valid' may only appear in a machine that 'refines' another",
             )
             .to_compile_error();
         }
@@ -65,29 +65,29 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
 
     // --- validate method ---
     // Abstract machines: validate = user invariant body
-    // Refined machines: validate = abstract_validate(lifted ctx) && user invariant body
+    // Refined machines: validate = abstract_validate(lifted context) && user invariant body
     //
-    // The context lift is `<Self as Lift<ConcreteCtx, AbstractCtx>>::lift` — written fully
+    // The context lift is `<Self as Lift<ConcreteContext, AbstractContext>>::lift` — written fully
     // qualified because the machine carries two `Lift` impls (state and context).
-    let lifted_ctx = |ctx_ident: &syn::Ident| -> TokenStream {
+    let lifted_context = |context_ident: &syn::Ident| -> TokenStream {
         match &decl.refines {
             Some(refines_path) => quote! {
-                <#name as Lift<#ctx_type, <#refines_path as Machine>::Context>>::lift(#ctx_ident)
+                <#name as Lift<#context_type, <#refines_path as Machine>::Context>>::lift(#context_ident)
             },
-            None => quote! { #ctx_ident },
+            None => quote! { #context_ident },
         }
     };
 
     let validate_impl = if let Some(ref inv) = decl.invariant {
-        let inv_ctx = &inv.ctx_name;
+        let inv_context = &inv.context_name;
         let inv_state = &inv.state_name;
         let inv_body = &inv.body;
 
         if decl.refines.is_some() {
-            let lifted = lifted_ctx(inv_ctx);
+            let lifted = lifted_context(inv_context);
             quote! {
                 impl #name {
-                    pub open spec fn validate(&self, #inv_ctx: #ctx_type) -> bool {
+                    pub open spec fn validate(&self, #inv_context: #context_type) -> bool {
                         let #inv_state = *self;
                         self.lift().validate(#lifted) && { #inv_body }
                     }
@@ -96,7 +96,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         } else {
             quote! {
                 impl #name {
-                    pub open spec fn validate(&self, #inv_ctx: #ctx_type) -> bool {
+                    pub open spec fn validate(&self, #inv_context: #context_type) -> bool {
                         let #inv_state = *self;
                         #inv_body
                     }
@@ -104,11 +104,11 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             }
         }
     } else if decl.refines.is_some() {
-        let ctx_ident = syn::Ident::new("ctx", name.span());
-        let lifted = lifted_ctx(&ctx_ident);
+        let context_ident = syn::Ident::new("context", name.span());
+        let lifted = lifted_context(&context_ident);
         quote! {
             impl #name {
-                pub open spec fn validate(&self, ctx: #ctx_type) -> bool {
+                pub open spec fn validate(&self, context: #context_type) -> bool {
                     self.lift().validate(#lifted)
                 }
             }
@@ -116,7 +116,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
     } else {
         quote! {
             impl #name {
-                pub open spec fn validate(&self, _ctx: #ctx_type) -> bool {
+                pub open spec fn validate(&self, _context: #context_type) -> bool {
                     true
                 }
             }
@@ -126,18 +126,18 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
     // --- Machine impl (no longer contains init) ---
     let machine_impl = quote! {
         impl Machine for #name {
-            type Context = #ctx_type;
+            type Context = #context_type;
 
-            open spec fn invariant(ctx: Self::Context, state: Self) -> bool {
-                state.validate(ctx)
+            open spec fn invariant(context: Self::Context, state: Self) -> bool {
+                state.validate(context)
             }
         }
     };
 
     // --- Init impl ---
-    let init_ctx = &decl.init.ctx_name;
+    let init_context = &decl.init.context_name;
     let init_body = &decl.init.body;
-    let init_span = init_ctx.span();
+    let init_span = init_context.span();
     let init_impl = quote_spanned! { init_span =>
         #[allow(dead_code)]
         pub struct Initialize;
@@ -145,17 +145,17 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         impl Init<#name> for Initialize {
             type Input = ();
 
-            open spec fn init(#init_ctx: #ctx_type, _input: ()) -> #name {
+            open spec fn init(#init_context: #context_type, _input: ()) -> #name {
                 #name {
                     #init_body
                 }
             }
 
-            proof fn proof_safety(_ctx: #ctx_type, _input: ()) {}
+            proof fn proof_safety(_context: #context_type, _input: ()) {}
         }
     };
 
-    // --- Lift impls (refinements only): state lift + ctx lift, keyed on the machine ---
+    // --- Lift impls (refinements only): state lift + context lift, keyed on the machine ---
     let lift_impl = if let Some(ref refines_path) = decl.refines {
         let lift_decl = match &decl.lift {
             Some(l) => l,
@@ -170,26 +170,26 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         let lift_state = &lift_decl.state_name;
         let lift_body = &lift_decl.body;
 
-        let (lc_ctx, lc_body) = match &decl.lift_ctx {
-            Some(lc) => (lc.ctx_name.clone(), lc.body.clone()),
+        let (lc_context, lc_body) = match &decl.lift_context {
+            Some(lc) => (lc.context_name.clone(), lc.body.clone()),
             None => (
-                syn::Ident::new("ctx", name.span()),
-                quote! { ctx },
+                syn::Ident::new("context", name.span()),
+                quote! { context },
             ),
         };
 
-        // `&self` convenience for the context lift — only for an inline `ctx { }` declaration,
-        // whose `Ctx` struct is unique to this machine. An external context type may be shared
+        // `&self` convenience for the context lift — only for an inline `context { }` declaration,
+        // whose `Context` struct is unique to this machine. An external context type may be shared
         // between machines, so an inherent `lift` method on it would collide.
-        let ctx_helper = match &decl.ctx {
-            CtxDecl::Inline { .. } => quote! {
-                impl #ctx_type {
+        let context_helper = match &decl.context {
+            ContextDecl::Inline { .. } => quote! {
+                impl #context_type {
                     pub open spec fn lift(&self) -> <#refines_path as Machine>::Context {
-                        <#name as Lift<#ctx_type, <#refines_path as Machine>::Context>>::lift(*self)
+                        <#name as Lift<#context_type, <#refines_path as Machine>::Context>>::lift(*self)
                     }
                 }
             },
-            CtxDecl::External(_) => quote! {},
+            ContextDecl::External(_) => quote! {},
         };
 
         quote! {
@@ -199,8 +199,8 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
                 }
             }
 
-            impl Lift<#ctx_type, <#refines_path as Machine>::Context> for #name {
-                open spec fn lift(#lc_ctx: #ctx_type) -> <#refines_path as Machine>::Context {
+            impl Lift<#context_type, <#refines_path as Machine>::Context> for #name {
+                open spec fn lift(#lc_context: #context_type) -> <#refines_path as Machine>::Context {
                     #lc_body
                 }
             }
@@ -212,7 +212,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
                 }
             }
 
-            #ctx_helper
+            #context_helper
         }
     } else {
         quote! {}
@@ -224,7 +224,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         let has_concrete_event = decl.events.iter().any(|e| e.concrete);
         let convergent_impl = match (&decl.variant, has_concrete_event) {
             (Some(v), _) => {
-                let v_ctx = &v.ctx_name;
+                let v_context = &v.context_name;
                 let v_state = &v.state_name;
                 let v_ty = &v.ret_type;
                 let v_body = &v.body;
@@ -232,7 +232,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
                     impl ConvergentRefinement for #name {
                         type Variant = #v_ty;
 
-                        open spec fn variant(#v_ctx: Self::Context, #v_state: Self) -> Self::Variant {
+                        open spec fn variant(#v_context: Self::Context, #v_state: Self) -> Self::Variant {
                             #v_body
                         }
                     }
@@ -241,41 +241,41 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             (None, true) => {
                 let err = syn::Error::new(
                     name.span(),
-                    "machine with 'concrete' events must declare a machine-level 'variant(ctx, state) -> Type { ... }' block",
+                    "machine with 'concrete' events must declare a machine-level 'variant(context, state) -> Type { ... }' block",
                 );
                 return err.to_compile_error();
             }
             (None, false) => quote! {},
         };
 
-        let proof_lift_ctx_valid_fn = match &decl.proof_lift_ctx_valid {
+        let proof_lift_context_valid_fn = match &decl.proof_lift_context_valid {
             Some(p) => {
-                let p_ctx = &p.ctx_name;
+                let p_context = &p.context_name;
                 let p_body = &p.body;
                 quote! {
-                    proof fn proof_lift_ctx_valid(#p_ctx: #ctx_type) {
+                    proof fn proof_lift_context_valid(#p_context: #context_type) {
                         #p_body
                     }
                 }
             }
             None => quote! {
-                proof fn proof_lift_ctx_valid(_ctx: #ctx_type) {}
+                proof fn proof_lift_context_valid(_context: #context_type) {}
             },
         };
 
         let proof_lift_safe_fn = match &decl.proof_lift_safe {
             Some(p) => {
-                let p_ctx = &p.ctx_name;
+                let p_context = &p.context_name;
                 let p_state = &p.state_name;
                 let p_body = &p.body;
                 quote_spanned! { p.span =>
-                    proof fn proof_lift_safe(#p_ctx: #ctx_type, #p_state: Self) {
+                    proof fn proof_lift_safe(#p_context: #context_type, #p_state: Self) {
                         #p_body
                     }
                 }
             }
             None => quote! {
-                proof fn proof_lift_safe(_ctx: #ctx_type, _state: Self) {}
+                proof fn proof_lift_safe(_context: #context_type, _state: Self) {}
             },
         };
 
@@ -283,7 +283,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             impl Refinement for #name {
                 type Abstract = #refines_path;
 
-                #proof_lift_ctx_valid_fn
+                #proof_lift_context_valid_fn
 
                 #proof_lift_safe_fn
             }
@@ -293,7 +293,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             impl RefinedInit<#name, #abstract_init> for Initialize {
                 open spec fn lift_in(_input: ()) -> () { () }
 
-                proof fn proof_simulation(_ctx: #ctx_type, _input: ()) {}
+                proof fn proof_simulation(_context: #context_type, _input: ()) {}
             }
         }
     } else {
@@ -330,9 +330,9 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
                         // arithmetic / built-ins that Verus rejects as triggers.
                         // Keeping `Event::guard(...)` as the trigger pattern
                         // preserves a well-formed quantifier regardless of body.
-                        quote! { exists|#pname: #pty| #[trigger] #ename::guard(ctx, state, #pname) }
+                        quote! { exists|#pname: #pty| #[trigger] #ename::guard(context, state, #pname) }
                     } else {
-                        quote! { #ename::guard(ctx, state, ()) }
+                        quote! { #ename::guard(context, state, ()) }
                     }
                 })
                 .collect();
@@ -347,10 +347,10 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
 
             let dl_span = name.span();
             quote_spanned! { dl_span =>
-                proof fn proof_deadlock_free(ctx: #ctx_type, state: #name)
+                proof fn proof_deadlock_free(context: #context_type, state: #name)
                     requires
-                        ctx.valid(),
-                        #name::invariant(ctx, state),
+                        context.valid(),
+                        #name::invariant(context, state),
                     ensures
                         #guard_disjunction,
                 {}
@@ -360,10 +360,10 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         quote! {}
     };
 
-    // --- Inline ctx struct + MachineContext impl ---
-    let ctx_struct_impl = match &decl.ctx {
-        CtxDecl::Inline { fields, valid } => {
-            let ctx_field_defs: Vec<_> = fields
+    // --- Inline context struct + MachineContext impl ---
+    let context_struct_impl = match &decl.context {
+        ContextDecl::Inline { fields, valid } => {
+            let context_field_defs: Vec<_> = fields
                 .iter()
                 .map(|f| {
                     let fname = &f.name;
@@ -373,19 +373,19 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
                 .collect();
 
             let valid_impl = if let Some(v) = valid {
-                let v_ctx = &v.ctx_name;
+                let v_context = &v.context_name;
                 let v_body = &v.body;
                 quote! {
-                    impl MachineContext for Ctx {
+                    impl MachineContext for Context {
                         open spec fn valid(&self) -> bool {
-                            let #v_ctx = *self;
+                            let #v_context = *self;
                             #v_body
                         }
                     }
                 }
             } else {
                 quote! {
-                    impl MachineContext for Ctx {
+                    impl MachineContext for Context {
                         open spec fn valid(&self) -> bool {
                             true
                         }
@@ -394,20 +394,20 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             };
 
             quote! {
-                pub struct Ctx {
-                    #(#ctx_field_defs,)*
+                pub struct Context {
+                    #(#context_field_defs,)*
                 }
 
                 #valid_impl
             }
         }
-        CtxDecl::External(_) => quote! {},
+        ContextDecl::External(_) => quote! {},
     };
 
     // --- Wrap everything in verus! ---
     quote! {
         verus! {
-            #ctx_struct_impl
+            #context_struct_impl
 
             pub struct #name {
                 #(#field_defs,)*
@@ -432,14 +432,14 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
 
 fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
     let machine_name = &decl.name;
-    let ctx_type = decl.ctx.spec_type();
+    let context_type = decl.context.spec_type();
     let event_name = &evt.name;
 
-    let guard_ctx = &evt.guard.ctx_name;
+    let guard_context = &evt.guard.context_name;
     let guard_state = &evt.guard.state_name;
     let guard_body = &evt.guard.body;
 
-    let action_ctx = &evt.action.ctx_name;
+    let action_context = &evt.action.context_name;
     let action_state = &evt.action.state_name;
     let action_body = &evt.action.body;
 
@@ -471,18 +471,18 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
 
     // --- Output function body ---
     let output_fn = if let Some(ref output) = evt.output {
-        let out_ctx = &output.ctx_name;
+        let out_context = &output.context_name;
         let out_state = &output.state_name;
         let out_body = &output.body;
         quote! {
-            open spec fn output(#out_ctx: #ctx_type, #out_state: #machine_name, #input_param) -> #output_type {
+            open spec fn output(#out_context: #context_type, #out_state: #machine_name, #input_param) -> #output_type {
                 #out_body
             }
         }
     } else {
         // No user-provided output block — emit a trivial `()` output.
         quote! {
-            open spec fn output(_ctx: #ctx_type, _state: #machine_name, _input: #input_type) -> () {
+            open spec fn output(_context: #context_type, _state: #machine_name, _input: #input_type) -> () {
                 ()
             }
         }
@@ -494,19 +494,19 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
     };
 
     let (safety_span, safety_body, safety_params) = match &evt.safety_proof {
-        Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { ctx: #ctx_type, state: #machine_name, #input_param }),
-        None => (event_name.span(), quote! {}, quote! { _ctx: #ctx_type, _state: #machine_name, #input_param_unused }),
+        Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { context: #context_type, state: #machine_name, #input_param }),
+        None => (event_name.span(), quote! {}, quote! { _context: #context_type, _state: #machine_name, #input_param_unused }),
     };
     let event_impl = quote_spanned! { safety_span =>
         impl Event<#machine_name> for #event_name {
             type Input = #input_type;
             type Output = #output_type;
 
-            open spec fn guard(#guard_ctx: #ctx_type, #guard_state: #machine_name, #input_param) -> bool {
+            open spec fn guard(#guard_context: #context_type, #guard_state: #machine_name, #input_param) -> bool {
                 #guard_body
             }
 
-            open spec fn action(#action_ctx: #ctx_type, #action_state: #machine_name, #input_param) -> #machine_name {
+            open spec fn action(#action_context: #context_type, #action_state: #machine_name, #input_param) -> #machine_name {
                 #action_body
             }
 
@@ -524,12 +524,12 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
 
             // lift_in: map concrete input to abstract input.
             let lift_in_fn = if let Some(ref li) = evt.lift_in {
-                let li_ctx = &li.ctx_name;
+                let li_context = &li.context_name;
                 let li_state = &li.state_name;
                 let li_input = &li.input_name;
                 let li_body = &li.body;
                 quote! {
-                    open spec fn lift_in(#li_ctx: #ctx_type, #li_state: #machine_name, #li_input: #input_type)
+                    open spec fn lift_in(#li_context: #context_type, #li_state: #machine_name, #li_input: #input_type)
                         -> <#abstract_event as Event<#refines_path>>::Input
                     {
                         #li_body
@@ -538,13 +538,13 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
             } else if evt.input.is_some() {
                 return syn::Error::new(
                     evt.name.span(),
-                    "refined event with an input must declare a 'lift_in(ctx, state, input) { ... }' \
+                    "refined event with an input must declare a 'lift_in(context, state, input) { ... }' \
                      block mapping the concrete input to the abstract input",
                 )
                 .to_compile_error();
             } else {
                 quote! {
-                    open spec fn lift_in(_ctx: #ctx_type, _state: #machine_name, _input: #input_type)
+                    open spec fn lift_in(_context: #context_type, _state: #machine_name, _input: #input_type)
                         -> <#abstract_event as Event<#refines_path>>::Input
                     {
                         ()
@@ -574,12 +574,12 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
             };
 
             let (_str_span, str_body, str_params) = match &evt.strengthening_proof {
-                Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { ctx: #ctx_type, state: #machine_name, #input_param }),
-                None => (event_name.span(), quote! {}, quote! { _ctx: #ctx_type, _state: #machine_name, #input_param_unused }),
+                Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { context: #context_type, state: #machine_name, #input_param }),
+                None => (event_name.span(), quote! {}, quote! { _context: #context_type, _state: #machine_name, #input_param_unused }),
             };
             let (_sim_span, sim_body, sim_params) = match &evt.simulation_proof {
-                Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { ctx: #ctx_type, state: #machine_name, #input_param }),
-                None => (event_name.span(), quote! {}, quote! { _ctx: #ctx_type, _state: #machine_name, #input_param_unused }),
+                Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { context: #context_type, state: #machine_name, #input_param }),
+                None => (event_name.span(), quote! {}, quote! { _context: #context_type, _state: #machine_name, #input_param_unused }),
             };
             let refined_span = evt.strengthening_proof.as_ref()
                 .or(evt.simulation_proof.as_ref())
@@ -607,12 +607,12 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
 
     let new_impl = if evt.concrete {
         let (stut_span, stut_body, stut_params) = match &evt.stuttering_proof {
-            Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { ctx: #ctx_type, state: #machine_name, #input_param }),
-            None => (event_name.span(), quote! {}, quote! { _ctx: #ctx_type, _state: #machine_name, #input_param_unused }),
+            Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { context: #context_type, state: #machine_name, #input_param }),
+            None => (event_name.span(), quote! {}, quote! { _context: #context_type, _state: #machine_name, #input_param_unused }),
         };
         let (conv_span, conv_body, conv_params) = match &evt.convergence_proof {
-            Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { ctx: #ctx_type, state: #machine_name, #input_param }),
-            None => (event_name.span(), quote! {}, quote! { _ctx: #ctx_type, _state: #machine_name, #input_param_unused }),
+            Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { context: #context_type, state: #machine_name, #input_param }),
+            None => (event_name.span(), quote! {}, quote! { _context: #context_type, _state: #machine_name, #input_param_unused }),
         };
         let conv_method = quote_spanned! { conv_span =>
             proof fn proof_convergent(#conv_params) {

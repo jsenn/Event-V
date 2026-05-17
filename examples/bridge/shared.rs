@@ -4,11 +4,11 @@ use event_v::machine::MachineContext;
 
 verus! {
 
-pub struct BridgeCtx {
+pub struct BridgeContext {
     pub max_cars: nat,
 }
 
-impl MachineContext for BridgeCtx {
+impl MachineContext for BridgeContext {
     open spec fn valid(&self) -> bool {
         self.max_cars > 0
     }

@@ -46,17 +46,17 @@ pub trait EventAdaptor: Sized {
 /// Contains the necessary glue to animate a machine.
 pub trait Animate: Sized {
     /// The `ContextAdaptor` for this animated machine
-    type Ctx: ContextAdaptor;
+    type Context: ContextAdaptor;
 
     /// The event enum for this animated machine
     type Event: EventAdaptor;
 
     /// Create an animation given a context.
-    fn init(ctx: &Self::Ctx) -> Self;
+    fn init(context: &Self::Context) -> Self;
 
     /// Execute the appropriate guard for a given event.
-    fn guard(ctx: &Self::Ctx, state: &Self, event: &Self::Event) -> bool;
+    fn guard(context: &Self::Context, state: &Self, event: &Self::Event) -> bool;
 
     /// Apply a given event's action, returning the new state and an optional formatted output.
-    fn action(ctx: &Self::Ctx, state: &Self, event: &Self::Event) -> (Self, Option<String>);
+    fn action(context: &Self::Context, state: &Self, event: &Self::Event) -> (Self, Option<String>);
 }

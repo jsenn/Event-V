@@ -8,7 +8,7 @@ use event_v::machine;
 machine! {
 
 deadlock_free machine Ref1 refines abs::Abs {
-    ctx: abs::Ctx,
+    context: abs::Context,
 
     state {
         cars_to_island: nat,
@@ -16,7 +16,7 @@ deadlock_free machine Ref1 refines abs::Abs {
         cars_to_mainland: nat,
     }
 
-    init(ctx) {
+    init(context) {
         cars_to_island: 0,
         cars_on_island: 0,
         cars_to_mainland: 0
@@ -28,21 +28,21 @@ deadlock_free machine Ref1 refines abs::Abs {
         }
     }
 
-    invariant(ctx, state) {
+    invariant(context, state) {
         ||| state.cars_to_island == 0
         ||| state.cars_to_mainland == 0
     }
 
-    variant(ctx, state) -> (nat, nat) {
+    variant(context, state) -> (nat, nat) {
         (state.cars_to_island, state.cars_on_island)
     }
 
     refined event MainlandIn {
-        guard(ctx, state) {
+        guard(context, state) {
             state.cars_to_mainland > 0
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref1 {
                 cars_to_mainland: (state.cars_to_mainland - 1) as nat,
                 ..state
@@ -51,12 +51,12 @@ deadlock_free machine Ref1 refines abs::Abs {
     }
 
     refined event MainlandOut {
-        guard(ctx, state) {
+        guard(context, state) {
             &&& state.cars_to_mainland == 0
-            &&& state.total_cars() < ctx.max_cars
+            &&& state.total_cars() < context.max_cars
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref1 {
                 cars_to_island: state.cars_to_island + 1,
                 ..state
@@ -65,11 +65,11 @@ deadlock_free machine Ref1 refines abs::Abs {
     }
 
     concrete event IslandIn {
-        guard(ctx, state) {
+        guard(context, state) {
             state.cars_to_island > 0
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref1 {
                 cars_to_island: (state.cars_to_island - 1) as nat,
                 cars_on_island: state.cars_on_island + 1,
@@ -79,12 +79,12 @@ deadlock_free machine Ref1 refines abs::Abs {
     }
 
     concrete event IslandOut {
-        guard(ctx, state) {
+        guard(context, state) {
             &&& state.cars_on_island > 0
             &&& state.cars_to_island == 0
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref1 {
                 cars_on_island: (state.cars_on_island - 1) as nat,
                 cars_to_mainland: state.cars_to_mainland + 1,

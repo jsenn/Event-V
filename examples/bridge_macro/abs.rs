@@ -6,32 +6,32 @@ use event_v::machine;
 machine! {
 
 deadlock_free machine Abs {
-    ctx {
+    context {
         max_cars: nat,
     }
 
-    valid(ctx) {
-        ctx.max_cars > 0
+    valid(context) {
+        context.max_cars > 0
     }
 
     state {
         cars: nat,
     }
 
-    init(ctx) {
+    init(context) {
         cars: 0
     }
 
-    invariant(ctx, state) {
-        state.cars <= ctx.max_cars
+    invariant(context, state) {
+        state.cars <= context.max_cars
     }
 
     event MainlandIn {
-        guard(ctx, state) {
+        guard(context, state) {
             state.cars > 0
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Abs {
                 cars: (state.cars - 1) as nat,
                 ..state
@@ -40,11 +40,11 @@ deadlock_free machine Abs {
     }
 
     event MainlandOut {
-        guard(ctx, state) {
-            state.cars < ctx.max_cars
+        guard(context, state) {
+            state.cars < context.max_cars
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Abs {
                 cars: state.cars + 1,
                 ..state

@@ -11,7 +11,7 @@ use event_v::machine;
 machine! {
 
 deadlock_free machine Ref2 refines ref1::Ref1 {
-    ctx: abs::Ctx,
+    context: abs::Context,
 
     state {
         cars_to_island: nat,
@@ -25,7 +25,7 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
         car_left_island: bool,
     }
 
-    init(ctx) {
+    init(context) {
         cars_to_island: 0,
         cars_on_island: 0,
         cars_to_mainland: 0,
@@ -45,11 +45,11 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
         }
     }
 
-    invariant(ctx, state) {
+    invariant(context, state) {
         // Traffic lights
         &&& self.light_mainland.is_green() ==> {
             &&& self.cars_to_mainland == 0
-            &&& self.lift().total_cars() < ctx.max_cars
+            &&& self.lift().total_cars() < context.max_cars
         }
         &&& self.light_island.is_green() ==> self.cars_to_island == 0 && self.cars_on_island > 0
         &&& self.light_mainland.is_red() || self.light_island.is_red()
@@ -58,16 +58,16 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
         &&& self.light_island.is_red() ==> self.car_left_island
     }
 
-    variant(ctx, state) -> (bool, bool) {
+    variant(context, state) -> (bool, bool) {
         (state.car_left_island, state.car_left_mainland)
     }
 
     refined event MainlandIn {
-        guard(ctx, state) {
+        guard(context, state) {
             state.cars_to_mainland > 0
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref2 {
                 cars_to_mainland: (state.cars_to_mainland - 1) as nat,
                 ..state
@@ -76,15 +76,15 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
     }
 
     refined event MainlandOut {
-        guard(ctx, state) {
+        guard(context, state) {
             state.light_mainland.is_green()
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref2 {
                 cars_to_island: state.cars_to_island + 1,
                 light_mainland:
-                    if state.cars_to_island + state.cars_on_island + 1 == ctx.max_cars {
+                    if state.cars_to_island + state.cars_on_island + 1 == context.max_cars {
                         TrafficLight::Red
                     } else {
                         TrafficLight::Green
@@ -96,11 +96,11 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
     }
 
     refined event IslandIn {
-        guard(ctx, state) {
+        guard(context, state) {
             state.cars_to_island > 0
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref2 {
                 cars_to_island: (state.cars_to_island - 1) as nat,
                 cars_on_island: state.cars_on_island + 1,
@@ -110,11 +110,11 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
     }
 
     refined event IslandOut {
-        guard(ctx, state) {
+        guard(context, state) {
             state.light_island.is_green()
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref2 {
                 cars_on_island: (state.cars_on_island - 1) as nat,
                 cars_to_mainland: state.cars_to_mainland + 1,
@@ -131,14 +131,14 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
     }
 
     concrete event TurnGreenMainland {
-        guard(ctx, state) {
+        guard(context, state) {
             &&& state.light_mainland.is_red()
             &&& state.car_left_island
-            &&& state.lift().total_cars() < ctx.max_cars
+            &&& state.lift().total_cars() < context.max_cars
             &&& state.cars_to_mainland == 0
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref2 {
                 light_mainland: TrafficLight::Green,
                 light_island: TrafficLight::Red,
@@ -149,14 +149,14 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
     }
 
     concrete event TurnGreenIsland {
-        guard(ctx, state) {
+        guard(context, state) {
             &&& state.light_island.is_red()
             &&& state.car_left_mainland
             &&& state.cars_on_island > 0
             &&& state.cars_to_island == 0
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref2 {
                 light_island: TrafficLight::Green,
                 light_mainland: TrafficLight::Red,

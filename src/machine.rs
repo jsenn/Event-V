@@ -18,11 +18,11 @@ verus! {
 ///
 /// # Examples
 /// ```rust,ignore
-/// pub struct CounterCtx {
+/// pub struct CounterContext {
 ///     pub max_value: nat,
 /// }
 ///
-/// impl MachineContext for CounterCtx {
+/// impl MachineContext for CounterContext {
 ///    open spec fn valid(&self) -> bool {
 ///        self.max_value > 0
 ///    }
@@ -38,11 +38,11 @@ pub trait MachineContext: Sized {
 ///
 /// # Examples
 /// ```rust,ignore
-/// pub struct CounterCtx {
+/// pub struct CounterContext {
 ///     pub max_value: nat,
 /// }
 ///
-/// impl MachineContext for CounterCtx {
+/// impl MachineContext for CounterContext {
 ///    open spec fn valid(&self) -> bool {
 ///        self.max_value > 0
 ///    }
@@ -53,10 +53,10 @@ pub trait MachineContext: Sized {
 /// }
 ///
 /// impl Machine for Counter {
-///     type Ctx = Ctx;
+///     type Context = Context;
 ///
-///     open spec fn invariant(ctx: Self::Context, state: Self) -> bool {
-///         self.value <= ctx.max_value
+///     open spec fn invariant(context: Self::Context, state: Self) -> bool {
+///         self.value <= context.max_value
 ///     }
 /// }
 /// ```
@@ -65,7 +65,7 @@ pub trait Machine: Sized {
     type Context: MachineContext;
 
     /// The machine's **invariant** defines what it means for the machine to be in a valid state.
-    spec fn invariant(ctx: Self::Context, state: Self) -> bool;
+    spec fn invariant(context: Self::Context, state: Self) -> bool;
 }
 
 /// **Lift** a concrete representation (machine context or state) to an abstract one.
@@ -79,11 +79,11 @@ pub trait Lift<Concrete, Abstract> {
 /// 
 /// # Examples
 /// ```rust,ignore
-/// pub struct CounterCtx {
+/// pub struct CounterContext {
 ///     pub max_value: nat,
 /// }
 ///
-/// impl MachineContext for CounterCtx {
+/// impl MachineContext for CounterContext {
 ///    open spec fn valid(&self) -> bool {
 ///        self.max_value > 0
 ///    }
@@ -94,10 +94,10 @@ pub trait Lift<Concrete, Abstract> {
 /// }
 ///
 /// impl Machine for Counter {
-///     type Context = CounterCtx;
+///     type Context = CounterContext;
 ///
-///     open spec fn invariant(ctx: Self::Context, state: Self) -> bool {
-///         self.value <= ctx.max_value
+///     open spec fn invariant(context: Self::Context, state: Self) -> bool {
+///         self.value <= context.max_value
 ///     }
 /// }
 /// 
@@ -105,11 +105,11 @@ pub trait Lift<Concrete, Abstract> {
 /// impl Init<Counter> for InitializeToZero {
 ///     type Input = ();
 ///
-///     open spec fn init(_ctx: CounterCtx, _input: ()) -> Counter {
+///     open spec fn init(_context: CounterContext, _input: ()) -> Counter {
 ///         Counter { value: 0 }
 ///     }
 ///
-///     proof fn proof_safety(_ctx: CounterCtx, _input: ()) {}
+///     proof fn proof_safety(_context: CounterContext, _input: ()) {}
 /// }
 ///
 /// // The second initialization takes an initial value.
@@ -117,11 +117,11 @@ pub trait Lift<Concrete, Abstract> {
 /// impl Init<Counter> for InitializeToValue {
 ///     type Input = nat;
 ///
-///     open spec fn init(_ctx: CounterCtx, input: nat) -> Counter {
+///     open spec fn init(_context: CounterContext, input: nat) -> Counter {
 ///         Counter { value: input }
 ///     }
 ///
-///     proof fn proof_safety(_ctx: CounterCtx, input: nat) {}
+///     proof fn proof_safety(_context: CounterContext, input: nat) {}
 /// }
 /// ```
 pub trait Init<M: Machine> {
@@ -129,13 +129,13 @@ pub trait Init<M: Machine> {
     type Input;
 
     /// Produce a `Machine` instance given a context and an input.
-    spec fn init(ctx: M::Context, input: Self::Input) -> M;
+    spec fn init(context: M::Context, input: Self::Input) -> M;
 
     /// Prove that given a valid context and input, the machine is well-formed after
     /// initialization.
-    proof fn proof_safety(ctx: M::Context, input: Self::Input)
-        requires ctx.valid(),
-        ensures M::invariant(ctx, Self::init(ctx, input));
+    proof fn proof_safety(context: M::Context, input: Self::Input)
+        requires context.valid(),
+        ensures M::invariant(context, Self::init(context, input));
 }
 
 /// Represents an event that modifies a machine's state. An event has 3 basic components:
@@ -148,11 +148,11 @@ pub trait Init<M: Machine> {
 ///
 /// # Examples
 /// ```rust,ignore
-/// pub struct CounterCtx {
+/// pub struct CounterContext {
 ///     pub max_value: nat,
 /// }
 ///
-/// impl MachineContext for CounterCtx {
+/// impl MachineContext for CounterContext {
 ///    open spec fn valid(&self) -> bool {
 ///        self.max_value > 0
 ///    }
@@ -163,10 +163,10 @@ pub trait Init<M: Machine> {
 /// }
 ///
 /// impl Machine for Counter {
-///     type Context = Ctx;
+///     type Context = Context;
 ///
-///     open spec fn invariant(ctx: Self::Context, state: Self) -> bool {
-///         self.value <= ctx.max_value
+///     open spec fn invariant(context: Self::Context, state: Self) -> bool {
+///         self.value <= context.max_value
 ///     }
 /// }
 /// 
@@ -174,11 +174,11 @@ pub trait Init<M: Machine> {
 /// impl Init<Counter> for InitializeToZero {
 ///     type Input = ();
 ///
-///     open spec fn init(_ctx: CounterCtx, _input: ()) -> Counter {
+///     open spec fn init(_context: CounterContext, _input: ()) -> Counter {
 ///         Counter { value: 0 }
 ///     }
 ///
-///     proof fn proof_safety(_ctx: CounterCtx, _input: ()) {}
+///     proof fn proof_safety(_context: CounterContext, _input: ()) {}
 /// }
 ///
 /// /// The `AddValue` event adds a given value to the Counter, returning the counter's old value.
@@ -187,19 +187,19 @@ pub trait Init<M: Machine> {
 ///     type Input = nat;
 ///     type Output = nat;
 ///
-///     open spec fn guard(ctx: CounterCtx, state: Counter, input: nat) -> bool {
-///         state.value + input <= ctx.max_value
+///     open spec fn guard(context: CounterContext, state: Counter, input: nat) -> bool {
+///         state.value + input <= context.max_value
 ///     }
 ///
-///     open spec fn action(_ctx: CounterCtx, state: Counter, input: nat) -> State {
+///     open spec fn action(_context: CounterContext, state: Counter, input: nat) -> State {
 ///         State { value: state.size + input }
 ///     }
 ///
-///     open spec fn output(_ctx: CounterCtx, state: Counter, _input: nat) -> nat {
+///     open spec fn output(_context: CounterContext, state: Counter, _input: nat) -> nat {
 ///         state.value
 ///     }
 ///
-///     proof fn proof_safety(ctx: CounterCtx, state: Counter, _input: nat) {}
+///     proof fn proof_safety(context: CounterContext, state: Counter, _input: nat) {}
 /// }
 pub trait Event<M: Machine> {
     /// The type this event takes as input
@@ -209,23 +209,23 @@ pub trait Event<M: Machine> {
     type Output;
 
     /// Determine whether this event is allowed to fire in a given state and for a given input.
-    spec fn guard(ctx: M::Context, state: M, input: Self::Input) -> bool;
+    spec fn guard(context: M::Context, state: M, input: Self::Input) -> bool;
 
     /// Specify how this event transforms the current state into the next state given an input.
-    spec fn action(ctx: M::Context, state: M, input: Self::Input) -> M;
+    spec fn action(context: M::Context, state: M, input: Self::Input) -> M;
 
     /// Produce an output given the current state and the event's input.
-    spec fn output(ctx: M::Context, state: M, input: Self::Input) -> Self::Output;
+    spec fn output(context: M::Context, state: M, input: Self::Input) -> Self::Output;
 
     /// Prove that this event can never transform a valid state into an invalid one, so long as the
     /// event's guard is satisfied.
-    proof fn proof_safety(ctx: M::Context, state: M, input: Self::Input)
+    proof fn proof_safety(context: M::Context, state: M, input: Self::Input)
         requires
-            ctx.valid(),
-            M::invariant(ctx, state),
-            Self::guard(ctx, state, input),
+            context.valid(),
+            M::invariant(context, state),
+            Self::guard(context, state, input),
         ensures
-            M::invariant(ctx, Self::action(ctx, state, input));
+            M::invariant(context, Self::action(context, state, input));
 }
 
 /// A `Refinement` maps a `Machine` to a second more abstract `Machine` to which it adds some
@@ -237,7 +237,7 @@ pub trait Event<M: Machine> {
 /// A `Refinement` must provide a way to map the concrete machine's context and state into those of
 /// the abstract machine. It must also prove that these mappings are valid. Specifically, it must
 /// prove:
-/// 1. That the `lift_ctx` function maps a valid concrete context onto a valid abstract one; and
+/// 1. That the `lift_context` function maps a valid concrete context onto a valid abstract one; and
 /// 2. That `lift`ing a valid concrete state into an abstract state preserves the abstract
 ///    machine's invariant.
 /// 
@@ -259,19 +259,19 @@ pub trait Refinement: Machine
     type Abstract: Machine;
 
     /// Prove that lifting a valid concrete context produces a valid abstract one.
-    proof fn proof_lift_ctx_valid(ctx: Self::Context)
+    proof fn proof_lift_context_valid(context: Self::Context)
         requires
-            ctx.valid(),
+            context.valid(),
         ensures
-            Self::lift(ctx).valid();
+            Self::lift(context).valid();
 
     /// Prove that lifting a valid concrete state produces a valid abstract state.
-    proof fn proof_lift_safe(ctx: Self::Context, state: Self)
+    proof fn proof_lift_safe(context: Self::Context, state: Self)
         requires
-            ctx.valid(),
-            Self::invariant(ctx, state),
+            context.valid(),
+            Self::invariant(context, state),
         ensures
-            <Self::Abstract as Machine>::invariant(Self::lift(ctx), Self::lift(state));
+            <Self::Abstract as Machine>::invariant(Self::lift(context), Self::lift(state));
 }
 
 /// A refinement that supplies a well-founded variant so that concrete events (those without an
@@ -287,7 +287,7 @@ pub trait ConvergentRefinement: Refinement {
     /// Map a machine state onto a variant value. Every event in the concrete machine that has no
     /// abstract equivalent must decrease this variant. This prevents a concrete refinement from
     /// deadlocking its abstract equivalent.
-    spec fn variant(ctx: Self::Context, state: Self) -> Self::Variant;
+    spec fn variant(context: Self::Context, state: Self) -> Self::Variant;
 }
 
 /// A `RefinedInit` maps a concrete initialization event to an abstract one. It must specify how to
@@ -302,11 +302,11 @@ pub trait RefinedInit<M: Refinement, Abstract: Init<M::Abstract>>: Init<M> {
     /// Prove that applying the concrete initialization then lifting it to an abstract state
     /// produces the same result as applying the abstract initialization to the lifted concrete
     /// input.
-    proof fn proof_simulation(ctx: M::Context, input: Self::Input)
+    proof fn proof_simulation(context: M::Context, input: Self::Input)
         requires
-            ctx.valid(),
+            context.valid(),
         ensures
-            M::lift(Self::init(ctx, input)) == Abstract::init(M::lift(ctx), Self::lift_in(input));
+            M::lift(Self::init(context, input)) == Abstract::init(M::lift(context), Self::lift_in(input));
 }
 
 /// A `RefinedEvent` maps a concrete event onto an abstract one. It has 4 parts:
@@ -319,31 +319,31 @@ pub trait RefinedInit<M: Refinement, Abstract: Init<M::Abstract>>: Init<M> {
 ///    would get from applying the *abstract* event to a lifted concrete state and input.
 pub trait RefinedEvent<M: Refinement, Abstract: Event<M::Abstract>>: Event<M> {
     /// Lift a concrete event input to an abstract one.
-    spec fn lift_in(ctx: M::Context, state: M, input: Self::Input) -> Abstract::Input;
+    spec fn lift_in(context: M::Context, state: M, input: Self::Input) -> Abstract::Input;
 
     /// Lift a concrete event output to an abstract one.
     spec fn lift_out(output: Self::Output) -> Abstract::Output;
 
     /// Prove that the concrete guard cannot be enabled when the abstract guard is not.
-    proof fn proof_strengthening(ctx: M::Context, state: M, input: Self::Input)
+    proof fn proof_strengthening(context: M::Context, state: M, input: Self::Input)
         requires
-            ctx.valid(),
-            M::invariant(ctx, state),
-            Self::guard(ctx, state, input),
+            context.valid(),
+            M::invariant(context, state),
+            Self::guard(context, state, input),
         ensures
-            Abstract::guard(M::lift(ctx), M::lift(state), Self::lift_in(ctx, state, input));
+            Abstract::guard(M::lift(context), M::lift(state), Self::lift_in(context, state, input));
 
     /// Prove that applying the concrete event then lifting the result to an abstract machine state
     /// is equivalent to applying the *abstract* event to the lifted concrete state and input.
-    proof fn proof_simulation(ctx: M::Context, state: M, input: Self::Input)
+    proof fn proof_simulation(context: M::Context, state: M, input: Self::Input)
         requires
-            ctx.valid(),
-            M::invariant(ctx, state),
-            Self::guard(ctx, state, input),
-            Abstract::guard(M::lift(ctx), M::lift(state), Self::lift_in(ctx, state, input)),
+            context.valid(),
+            M::invariant(context, state),
+            Self::guard(context, state, input),
+            Abstract::guard(M::lift(context), M::lift(state), Self::lift_in(context, state, input)),
         ensures
-            M::lift(Self::action(ctx, state, input)) == Abstract::action(M::lift(ctx), M::lift(state), Self::lift_in(ctx, state, input)),
-            Self::lift_out(Self::output(ctx, state, input)) == Abstract::output(M::lift(ctx), M::lift(state), Self::lift_in(ctx, state, input));
+            M::lift(Self::action(context, state, input)) == Abstract::action(M::lift(context), M::lift(state), Self::lift_in(context, state, input)),
+            Self::lift_out(Self::output(context, state, input)) == Abstract::output(M::lift(context), M::lift(state), Self::lift_in(context, state, input));
 }
 
 /// A `NewEvent` is one that appears in a concrete machine which has no counterpart in an abstract
@@ -352,28 +352,28 @@ pub trait RefinedEvent<M: Refinement, Abstract: Event<M::Abstract>>: Event<M> {
 ///    from deadlocking the abstract machine; and
 /// 2. **Stuttering**: the event must not change the abstract representation of the state.
 pub trait NewEvent<M: ConvergentRefinement>: Event<M> {
-    proof fn proof_convergent(ctx: M::Context, state: M, input: Self::Input)
+    proof fn proof_convergent(context: M::Context, state: M, input: Self::Input)
         requires
-            ctx.valid(),
-            M::invariant(ctx, state),
-            Self::guard(ctx, state, input),
+            context.valid(),
+            M::invariant(context, state),
+            Self::guard(context, state, input),
         ensures
             <M::Variant as LexLt>::lex_lt(
-                M::variant(ctx, Self::action(ctx, state, input)),
-                M::variant(ctx, state));
+                M::variant(context, Self::action(context, state, input)),
+                M::variant(context, state));
 
     /// Prove that applying the concrete event does not change the lifted abstract state.
-    proof fn proof_stuttering(ctx: M::Context, state: M, input: Self::Input)
+    proof fn proof_stuttering(context: M::Context, state: M, input: Self::Input)
         requires
-            ctx.valid(),
-            M::invariant(ctx, state),
-            Self::guard(ctx, state, input),
+            context.valid(),
+            M::invariant(context, state),
+            Self::guard(context, state, input),
         ensures
-            M::lift(Self::action(ctx, state, input)) == M::lift(state);
+            M::lift(Self::action(context, state, input)) == M::lift(state);
 }
 
 /// A `MirrorContext` is the executable context type of a [`Mirror`].
-pub trait MirrorContext<M: Lift<Self, SpecCtx>, SpecCtx: MachineContext>: Sized {
+pub trait MirrorContext<M: Lift<Self, SpecContext>, SpecContext: MachineContext>: Sized {
     /// Indicate whether the exec context is valid. Must agree with the lifted spec context.
     exec fn valid(&self) -> (b: bool)
         ensures
@@ -382,11 +382,11 @@ pub trait MirrorContext<M: Lift<Self, SpecCtx>, SpecCtx: MachineContext>: Sized 
 
 /// A `Mirror` is an executable type that simulates a spec [`Machine`].
 pub trait Mirror<Spec: Machine>:
-    Sized + Lift<Self, Spec> + Lift<Self::ExecCtx, Spec::Context>
-    where Self::ExecCtx: MirrorContext<Self, Spec::Context>
+    Sized + Lift<Self, Spec> + Lift<Self::ExecContext, Spec::Context>
+    where Self::ExecContext: MirrorContext<Self, Spec::Context>
 {
     /// The executable context type.
-    type ExecCtx;
+    type ExecContext;
 }
 
 /// `MirrorEvent` captures the relationship between an executable implementation of an event and
@@ -394,7 +394,7 @@ pub trait Mirror<Spec: Machine>:
 /// only if the spec guard is enabled on the lifted state, and its action should have a one-to-one
 /// relationship with the spec's action.
 pub trait MirrorEvent<M: Mirror<Spec>, Spec: Machine, SpecEv: Event<Spec>>
-    where M::ExecCtx: MirrorContext<M, Spec::Context>
+    where M::ExecContext: MirrorContext<M, Spec::Context>
 {
     /// The type of input the executable event takes
     type Input;
@@ -409,23 +409,23 @@ pub trait MirrorEvent<M: Mirror<Spec>, Spec: Machine, SpecEv: Event<Spec>>
 
     /// Indicate whether or not the executable event is enabled. It must be enabled if and only if
     /// the spec guard is enabled on the lifted state.
-    exec fn guard(state: &M, ctx: &M::ExecCtx, input: &Self::Input) -> (b: bool)
+    exec fn guard(state: &M, context: &M::ExecContext, input: &Self::Input) -> (b: bool)
         ensures
-            b == SpecEv::guard(M::lift(*ctx), M::lift(*state), Self::lift_in(input));
+            b == SpecEv::guard(M::lift(*context), M::lift(*state), Self::lift_in(input));
 
     /// Transform the current exec state to a new state, producing an output. The action and output
     /// must be equivalent to those of the spec mirror.
-    exec fn action(state: &M, ctx: &M::ExecCtx, input: &Self::Input) -> (out: (M, Self::Output))
+    exec fn action(state: &M, context: &M::ExecContext, input: &Self::Input) -> (out: (M, Self::Output))
         requires
-            SpecEv::guard(M::lift(*ctx), M::lift(*state), Self::lift_in(input)),
+            SpecEv::guard(M::lift(*context), M::lift(*state), Self::lift_in(input)),
         ensures
-            M::lift(out.0) == SpecEv::action(M::lift(*ctx), M::lift(*state), Self::lift_in(input)),
-            Self::lift_out(&out.1) == SpecEv::output(M::lift(*ctx), M::lift(*state), Self::lift_in(input));
+            M::lift(out.0) == SpecEv::action(M::lift(*context), M::lift(*state), Self::lift_in(input)),
+            Self::lift_out(&out.1) == SpecEv::output(M::lift(*context), M::lift(*state), Self::lift_in(input));
 }
 
 /// `MirrorInit` connects an executable initialization with a spec one.
 pub trait MirrorInit<M: Mirror<Spec>, Spec: Machine, SpecInit: Init<Spec>>
-    where M::ExecCtx: MirrorContext<M, Spec::Context>
+    where M::ExecContext: MirrorContext<M, Spec::Context>
 {
     /// The type of the executable init's input
     type Input;
@@ -434,9 +434,9 @@ pub trait MirrorInit<M: Mirror<Spec>, Spec: Machine, SpecInit: Init<Spec>>
     spec fn lift_in(input: &Self::Input) -> SpecInit::Input;
 
     /// Initialize the executable state given a context and input.
-    exec fn init(ctx: &M::ExecCtx, input: &Self::Input) -> (state: M)
+    exec fn init(context: &M::ExecContext, input: &Self::Input) -> (state: M)
         ensures
-            M::lift(state) == SpecInit::init(M::lift(*ctx), Self::lift_in(input));
+            M::lift(state) == SpecInit::init(M::lift(*context), Self::lift_in(input));
 }
 
 }

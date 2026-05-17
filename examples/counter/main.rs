@@ -6,37 +6,37 @@ use event_v::machine;
 machine! {
 
 machine Counter {
-    ctx {
+    context {
         max_value: nat,
     }
 
-    valid(ctx) {
+    valid(context) {
         // A counter with `max_value == 0` could never be incremented or decremented, which would
         // be quite boring
-        ctx.max_value > 0
+        context.max_value > 0
     }
 
     state {
         value: nat,
     }
 
-    init(ctx) {
+    init(context) {
         value: 0
     }
 
-    invariant(ctx, state) {
-        state.value <= ctx.max_value
+    invariant(context, state) {
+        state.value <= context.max_value
     }
 
     // The machine's first event increments the counter by 1. It may only fire if the current value
     // is less than the max value.
     event Increment {
         // We may only increment a counter whose value is less than the max value.
-        guard(ctx, state) {
-            state.value < ctx.max_value
+        guard(context, state) {
+            state.value < context.max_value
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Counter {
                 value: state.value + 1,
             }
@@ -45,11 +45,11 @@ machine Counter {
 
     event Decrement {
         // We may only decrement a counter if its value is greater than zero.
-        guard(ctx, state) {
+        guard(context, state) {
             state.value > 0
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Counter {
                 value: (state.value - 1) as nat,
             }

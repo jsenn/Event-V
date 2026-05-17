@@ -49,14 +49,14 @@ pub struct Environment {
 machine! {
 
 deadlock_free machine Ref3 refines ref2::Ref2 {
-    ctx: abs::Ctx,
+    context: abs::Context,
 
     state {
         con: Controller,
         env: Environment,
     }
 
-    init(ctx) {
+    init(context) {
         con: Controller {
             flag_entered_mainland: Flag::Clear,
             flag_left_mainland: Flag::Clear,
@@ -99,7 +99,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
         }
     }
 
-    invariant(ctx, state) {
+    invariant(context, state) {
         // Sensors detect the presence of physical cars
         &&& self.env.sensor_island_in.is_on() ==> self.env.cars_to_island > 0
         &&& self.env.sensor_island_out.is_on() ==> self.env.cars_on_island > 0
@@ -142,10 +142,10 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
         // Cars are only travelling along the bridge in one direction at a time
         &&& self.env.cars_to_island == 0 || self.env.cars_to_mainland == 0
         // The physical number of cars in the system is capped
-        &&& self.env.cars_to_island + self.env.cars_on_island + self.env.cars_to_mainland <= ctx.max_cars
+        &&& self.env.cars_to_island + self.env.cars_on_island + self.env.cars_to_mainland <= context.max_cars
     }
 
-    variant(ctx, state) -> (bool, bool, bool, bool, bool, bool, bool, bool) {
+    variant(context, state) -> (bool, bool, bool, bool, bool, bool, bool, bool) {
         (
             state.con.flag_left_mainland.is_clear(),
             state.con.flag_entered_mainland.is_clear(),
@@ -159,12 +159,12 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     refined event MainlandIn {
-        guard(ctx, state) {
+        guard(context, state) {
             &&& state.con.flag_entered_mainland.is_set()
             &&& state.con.cars_to_mainland > 0
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref3 {
                 con: Controller {
                     flag_entered_mainland: Flag::Clear,
@@ -177,17 +177,17 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     refined event MainlandOut {
-        guard(ctx, state) {
+        guard(context, state) {
             &&& state.con.flag_left_mainland.is_set()
-            &&& state.con.total_cars() + 1 <= ctx.max_cars
+            &&& state.con.total_cars() + 1 <= context.max_cars
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref3 {
                 con: Controller {
                     flag_left_mainland: Flag::Clear,
                     cars_to_island: state.con.cars_to_island + 1,
-                    light_mainland: if state.con.total_cars() + 1 == ctx.max_cars {
+                    light_mainland: if state.con.total_cars() + 1 == context.max_cars {
                         TrafficLight::Red
                     } else {
                         TrafficLight::Green
@@ -201,12 +201,12 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     refined event IslandIn {
-        guard(ctx, state) {
+        guard(context, state) {
             &&& state.con.flag_entered_island.is_set()
             &&& state.con.cars_to_island > 0
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref3 {
                 con: Controller {
                     flag_entered_island: Flag::Clear,
@@ -220,12 +220,12 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     refined event IslandOut {
-        guard(ctx, state) {
+        guard(context, state) {
             &&& state.con.flag_left_island.is_set()
             &&& state.con.cars_on_island > 0
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref3 {
                 con: Controller {
                     flag_left_island: Flag::Clear,
@@ -245,15 +245,15 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     refined event TurnGreenMainland {
-        guard(ctx, state) {
+        guard(context, state) {
             &&& state.con.light_mainland.is_red()
             &&& state.con.car_left_island
             &&& state.con.flag_left_island.is_clear()
             &&& state.con.cars_to_mainland == 0
-            &&& state.con.total_cars() < ctx.max_cars
+            &&& state.con.total_cars() < context.max_cars
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref3 {
                 con: Controller {
                     light_mainland: TrafficLight::Green,
@@ -267,7 +267,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     refined event TurnGreenIsland {
-        guard(ctx, state) {
+        guard(context, state) {
             &&& state.con.light_island.is_red()
             &&& state.con.car_left_mainland
             &&& state.con.flag_left_mainland.is_clear()
@@ -275,7 +275,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
             &&& state.con.cars_to_island == 0
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref3 {
                 con: Controller {
                     light_island: TrafficLight::Green,
@@ -289,12 +289,12 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     concrete event SensorMainlandOutArrive {
-        guard(ctx, state) {
+        guard(context, state) {
             &&& state.env.sensor_mainland_out.is_off()
             &&& state.con.flag_left_mainland.is_clear()
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref3 {
                 env: Environment {
                     sensor_mainland_out: Sensor::On,
@@ -307,13 +307,13 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     concrete event SensorMainlandInArrive {
-        guard(ctx, state) {
+        guard(context, state) {
             &&& state.env.sensor_mainland_in.is_off()
             &&& state.con.flag_entered_mainland.is_clear()
             &&& state.env.cars_to_mainland > 0
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref3 {
                 env: Environment {
                     sensor_mainland_in: Sensor::On,
@@ -326,13 +326,13 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     concrete event SensorIslandOutArrive {
-        guard(ctx, state) {
+        guard(context, state) {
             &&& state.env.cars_on_island > 0
             &&& state.env.sensor_island_out.is_off()
             &&& state.con.flag_left_island.is_clear()
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref3 {
                 env: Environment {
                     sensor_island_out: Sensor::On,
@@ -345,13 +345,13 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     concrete event SensorIslandInArrive {
-        guard(ctx, state) {
+        guard(context, state) {
             &&& state.env.cars_to_island > 0
             &&& state.env.sensor_island_in.is_off()
             &&& state.con.flag_entered_island.is_clear()
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref3 {
                 env: Environment {
                     sensor_island_in: Sensor::On,
@@ -364,12 +364,12 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     concrete event SensorMainlandOutDepart {
-        guard(ctx, state) {
+        guard(context, state) {
             &&& state.env.sensor_mainland_out.is_on()
             &&& state.con.light_mainland.is_green()
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref3 {
                 con: Controller {
                     flag_left_mainland: Flag::Set,
@@ -387,11 +387,11 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     concrete event SensorMainlandInDepart {
-        guard(ctx, state) {
+        guard(context, state) {
             state.env.sensor_mainland_in.is_on()
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref3 {
                 con: Controller {
                     flag_entered_mainland: Flag::Set,
@@ -409,12 +409,12 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     concrete event SensorIslandOutDepart {
-        guard(ctx, state) {
+        guard(context, state) {
             &&& state.env.sensor_island_out.is_on()
             &&& state.con.light_island.is_green()
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref3 {
                 con: Controller {
                     flag_left_island: Flag::Set,
@@ -433,11 +433,11 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     concrete event SensorIslandInDepart {
-        guard(ctx, state) {
+        guard(context, state) {
             state.env.sensor_island_in.is_on()
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Ref3 {
                 con: Controller {
                     flag_entered_island: Flag::Set,

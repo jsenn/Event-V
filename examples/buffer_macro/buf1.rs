@@ -8,13 +8,13 @@ use event_v::machine;
 machine! {
 
 machine Buf1 refines buf0::Buf0 {
-    ctx: buf0::Ctx,
+    context: buf0::Context,
 
     state {
         data: Seq<nat>,
     }
 
-    init(ctx) {
+    init(context) {
         data: Seq::empty()
     }
 
@@ -25,31 +25,31 @@ machine Buf1 refines buf0::Buf0 {
     }
 
     refined event Put(elem: nat) {
-        guard(ctx, state) {
-            state.data.len() < ctx.max_size
+        guard(context, state) {
+            state.data.len() < context.max_size
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Buf1 {
                 data: seq![elem].add(state.data),
             }
         }
 
-        lift_in(_ctx, _state, _elem) { () }
+        lift_in(_context, _state, _elem) { () }
     }
 
     refined event Fetch -> nat {
-        guard(ctx, state) {
+        guard(context, state) {
             state.data.len() > 0
         }
 
-        action(ctx, state) {
+        action(context, state) {
             Buf1 {
                 data: state.data.subrange(1, state.data.len() as int),
             }
         }
 
-        output(ctx, state) {
+        output(context, state) {
             state.data[0]
         }
 
@@ -57,15 +57,15 @@ machine Buf1 refines buf0::Buf0 {
     }
 
     refined event GetSize -> nat {
-        guard(ctx, state) {
+        guard(context, state) {
             true
         }
 
-        action(ctx, state) {
+        action(context, state) {
             state
         }
 
-        output(ctx, state) {
+        output(context, state) {
             state.data.len()
         }
 

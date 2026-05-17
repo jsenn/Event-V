@@ -30,8 +30,8 @@ impl Lift<State, ref1::State> for State {
     }
 }
 
-impl Lift<BridgeCtx, BridgeCtx> for State {
-    open spec fn lift(ctx: BridgeCtx) -> BridgeCtx { ctx }
+impl Lift<BridgeContext, BridgeContext> for State {
+    open spec fn lift(context: BridgeContext) -> BridgeContext { context }
 }
 
 impl State {
@@ -39,13 +39,13 @@ impl State {
         <State as Lift<State, ref1::State>>::lift(*self)
     }
 
-    pub open spec fn validate(&self, ctx: BridgeCtx) -> bool {
+    pub open spec fn validate(&self, context: BridgeContext) -> bool {
         // Abstract
-        &&& self.lift().validate(ctx)
+        &&& self.lift().validate(context)
         // Traffic lights
         &&& self.light_mainland.is_green() ==> {
             &&& self.cars_to_mainland == 0
-            &&& self.lift().total_cars() < ctx.max_cars
+            &&& self.lift().total_cars() < context.max_cars
         }
         &&& self.light_island.is_green() ==> self.cars_to_island == 0 && self.cars_on_island > 0
         &&& self.light_mainland.is_red() || self.light_island.is_red()
@@ -56,10 +56,10 @@ impl State {
 }
 
 impl Machine for State {
-    type Context = BridgeCtx;
+    type Context = BridgeContext;
 
-    open spec fn invariant(ctx: Self::Context, state: Self) -> bool {
-        state.validate(ctx)
+    open spec fn invariant(context: Self::Context, state: Self) -> bool {
+        state.validate(context)
     }
 }
 
@@ -67,7 +67,7 @@ pub struct Initialize;
 impl Init<State> for Initialize {
     type Input = ();
 
-    open spec fn init(ctx: BridgeCtx, _input: ()) -> State {
+    open spec fn init(context: BridgeContext, _input: ()) -> State {
         State {
             cars_to_island: 0,
             cars_on_island: 0,
@@ -81,20 +81,20 @@ impl Init<State> for Initialize {
         }
     }
 
-    proof fn proof_safety(ctx: BridgeCtx, _input: ()) {}
+    proof fn proof_safety(context: BridgeContext, _input: ()) {}
 }
 
 impl Refinement for State {
     type Abstract = ref1::State;
 
-    proof fn proof_lift_ctx_valid(ctx: BridgeCtx) {}
-    proof fn proof_lift_safe(ctx: BridgeCtx, state: Self) {}
+    proof fn proof_lift_context_valid(context: BridgeContext) {}
+    proof fn proof_lift_safe(context: BridgeContext, state: Self) {}
 }
 
 impl ConvergentRefinement for State {
     type Variant = (bool, bool);
 
-    open spec fn variant(_ctx: Self::Context, state: Self) -> Self::Variant {
+    open spec fn variant(_context: Self::Context, state: Self) -> Self::Variant {
         (state.car_left_island, state.car_left_mainland)
     }
 }
@@ -102,7 +102,7 @@ impl ConvergentRefinement for State {
 impl RefinedInit<State, ref1::Initialize> for Initialize {
     open spec fn lift_in(_input: ()) -> () { () }
 
-    proof fn proof_simulation(ctx: BridgeCtx, _input: ()) {}
+    proof fn proof_simulation(context: BridgeContext, _input: ()) {}
 }
 
 pub struct MainlandIn;
@@ -110,28 +110,28 @@ impl Event<State> for MainlandIn {
     type Input = ();
     type Output = ();
 
-    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
+    open spec fn guard(context: BridgeContext, state: State, _input: ()) -> bool {
         state.cars_to_mainland > 0
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
+    open spec fn action(context: BridgeContext, state: State, _input: ()) -> State {
         State {
             cars_to_mainland: (state.cars_to_mainland - 1) as nat,
             ..state
         }
     }
 
-    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+    open spec fn output(_context: BridgeContext, _state: State, _input: ()) -> () { () }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
+    proof fn proof_safety(context: BridgeContext, state: State, _input: ()) {}
 }
 
 impl RefinedEvent<State, ref1::MainlandIn> for MainlandIn {
-    open spec fn lift_in(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+    open spec fn lift_in(_context: BridgeContext, _state: State, _input: ()) -> () { () }
     open spec fn lift_out(_output: ()) -> () { () }
 
-    proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
-    proof fn proof_simulation(ctx: BridgeCtx, state: State, _input: ()) {}
+    proof fn proof_strengthening(context: BridgeContext, state: State, _input: ()) {}
+    proof fn proof_simulation(context: BridgeContext, state: State, _input: ()) {}
 }
 
 pub struct MainlandOut;
@@ -139,15 +139,15 @@ impl Event<State> for MainlandOut {
     type Input = ();
     type Output = ();
 
-    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
+    open spec fn guard(context: BridgeContext, state: State, _input: ()) -> bool {
         state.light_mainland.is_green()
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
+    open spec fn action(context: BridgeContext, state: State, _input: ()) -> State {
         State {
             cars_to_island: state.cars_to_island + 1,
             light_mainland:
-                if state.cars_to_island + state.cars_on_island + 1 == ctx.max_cars {
+                if state.cars_to_island + state.cars_on_island + 1 == context.max_cars {
                     TrafficLight::Red
                 } else {
                     TrafficLight::Green
@@ -157,17 +157,17 @@ impl Event<State> for MainlandOut {
         }
     }
 
-    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+    open spec fn output(_context: BridgeContext, _state: State, _input: ()) -> () { () }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
+    proof fn proof_safety(context: BridgeContext, state: State, _input: ()) {}
 }
 
 impl RefinedEvent<State, ref1::MainlandOut> for MainlandOut {
-    open spec fn lift_in(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+    open spec fn lift_in(_context: BridgeContext, _state: State, _input: ()) -> () { () }
     open spec fn lift_out(_output: ()) -> () { () }
 
-    proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
-    proof fn proof_simulation(ctx: BridgeCtx, state: State, _input: ()) {}
+    proof fn proof_strengthening(context: BridgeContext, state: State, _input: ()) {}
+    proof fn proof_simulation(context: BridgeContext, state: State, _input: ()) {}
 }
 
 pub struct IslandIn;
@@ -175,11 +175,11 @@ impl Event<State> for IslandIn {
     type Input = ();
     type Output = ();
 
-    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
+    open spec fn guard(context: BridgeContext, state: State, _input: ()) -> bool {
         state.cars_to_island > 0
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
+    open spec fn action(context: BridgeContext, state: State, _input: ()) -> State {
         State {
             cars_to_island: (state.cars_to_island - 1) as nat,
             cars_on_island: state.cars_on_island + 1,
@@ -187,17 +187,17 @@ impl Event<State> for IslandIn {
         }
     }
 
-    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+    open spec fn output(_context: BridgeContext, _state: State, _input: ()) -> () { () }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
+    proof fn proof_safety(context: BridgeContext, state: State, _input: ()) {}
 }
 
 impl RefinedEvent<State, ref1::IslandIn> for IslandIn {
-    open spec fn lift_in(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+    open spec fn lift_in(_context: BridgeContext, _state: State, _input: ()) -> () { () }
     open spec fn lift_out(_output: ()) -> () { () }
 
-    proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
-    proof fn proof_simulation(ctx: BridgeCtx, state: State, _input: ()) {}
+    proof fn proof_strengthening(context: BridgeContext, state: State, _input: ()) {}
+    proof fn proof_simulation(context: BridgeContext, state: State, _input: ()) {}
 }
 
 pub struct IslandOut;
@@ -205,11 +205,11 @@ impl Event<State> for IslandOut {
     type Input = ();
     type Output = ();
 
-    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
+    open spec fn guard(context: BridgeContext, state: State, _input: ()) -> bool {
         state.light_island.is_green()
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
+    open spec fn action(context: BridgeContext, state: State, _input: ()) -> State {
         State {
             cars_on_island: (state.cars_on_island - 1) as nat,
             cars_to_mainland: state.cars_to_mainland + 1,
@@ -224,17 +224,17 @@ impl Event<State> for IslandOut {
         }
     }
 
-    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+    open spec fn output(_context: BridgeContext, _state: State, _input: ()) -> () { () }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
+    proof fn proof_safety(context: BridgeContext, state: State, _input: ()) {}
 }
 
 impl RefinedEvent<State, ref1::IslandOut> for IslandOut {
-    open spec fn lift_in(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+    open spec fn lift_in(_context: BridgeContext, _state: State, _input: ()) -> () { () }
     open spec fn lift_out(_output: ()) -> () { () }
 
-    proof fn proof_strengthening(ctx: BridgeCtx, state: State, _input: ()) {}
-    proof fn proof_simulation(ctx: BridgeCtx, state: State, _input: ()) {}
+    proof fn proof_strengthening(context: BridgeContext, state: State, _input: ()) {}
+    proof fn proof_simulation(context: BridgeContext, state: State, _input: ()) {}
 }
 
 pub struct TurnGreenMainland;
@@ -242,14 +242,14 @@ impl Event<State> for TurnGreenMainland {
     type Input = ();
     type Output = ();
 
-    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
+    open spec fn guard(context: BridgeContext, state: State, _input: ()) -> bool {
         &&& state.light_mainland.is_red()
         &&& state.car_left_island
-        &&& state.lift().total_cars() < ctx.max_cars
+        &&& state.lift().total_cars() < context.max_cars
         &&& state.cars_to_mainland == 0
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
+    open spec fn action(context: BridgeContext, state: State, _input: ()) -> State {
         State {
             light_mainland: TrafficLight::Green,
             light_island: TrafficLight::Red,
@@ -258,14 +258,14 @@ impl Event<State> for TurnGreenMainland {
         }
     }
 
-    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+    open spec fn output(_context: BridgeContext, _state: State, _input: ()) -> () { () }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
+    proof fn proof_safety(context: BridgeContext, state: State, _input: ()) {}
 }
 
 impl NewEvent<State> for TurnGreenMainland {
-    proof fn proof_convergent(ctx: BridgeCtx, state: State, _input: ()) {}
-    proof fn proof_stuttering(ctx: BridgeCtx, state: State, _input: ()) {}
+    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
+    proof fn proof_stuttering(context: BridgeContext, state: State, _input: ()) {}
 }
 
 pub struct TurnGreenIsland;
@@ -273,14 +273,14 @@ impl Event<State> for TurnGreenIsland {
     type Input = ();
     type Output = ();
 
-    open spec fn guard(ctx: BridgeCtx, state: State, _input: ()) -> bool {
+    open spec fn guard(context: BridgeContext, state: State, _input: ()) -> bool {
         &&& state.light_island.is_red()
         &&& state.car_left_mainland
         &&& state.cars_on_island > 0
         &&& state.cars_to_island == 0
     }
 
-    open spec fn action(ctx: BridgeCtx, state: State, _input: ()) -> State {
+    open spec fn action(context: BridgeContext, state: State, _input: ()) -> State {
         State {
             light_island: TrafficLight::Green,
             light_mainland: TrafficLight::Red,
@@ -289,27 +289,27 @@ impl Event<State> for TurnGreenIsland {
         }
     }
 
-    open spec fn output(_ctx: BridgeCtx, _state: State, _input: ()) -> () { () }
+    open spec fn output(_context: BridgeContext, _state: State, _input: ()) -> () { () }
 
-    proof fn proof_safety(ctx: BridgeCtx, state: State, _input: ()) {}
+    proof fn proof_safety(context: BridgeContext, state: State, _input: ()) {}
 }
 
 impl NewEvent<State> for TurnGreenIsland {
-    proof fn proof_convergent(ctx: BridgeCtx, state: State, _input: ()) {}
-    proof fn proof_stuttering(ctx: BridgeCtx, state: State, _input: ()) {}
+    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
+    proof fn proof_stuttering(context: BridgeContext, state: State, _input: ()) {}
 }
 
-proof fn proof_deadlock_free(ctx: BridgeCtx, state: State)
+proof fn proof_deadlock_free(context: BridgeContext, state: State)
     requires
-        ctx.valid(),
-        State::invariant(ctx, state),
+        context.valid(),
+        State::invariant(context, state),
     ensures {
-        ||| MainlandIn::guard(ctx, state, ())
-        ||| MainlandOut::guard(ctx, state, ())
-        ||| IslandIn::guard(ctx, state, ())
-        ||| IslandOut::guard(ctx, state, ())
-        ||| TurnGreenMainland::guard(ctx, state, ())
-        ||| TurnGreenIsland::guard(ctx, state, ())
+        ||| MainlandIn::guard(context, state, ())
+        ||| MainlandOut::guard(context, state, ())
+        ||| IslandIn::guard(context, state, ())
+        ||| IslandOut::guard(context, state, ())
+        ||| TurnGreenMainland::guard(context, state, ())
+        ||| TurnGreenIsland::guard(context, state, ())
     },
 {}
 

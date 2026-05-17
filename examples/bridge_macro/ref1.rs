@@ -16,81 +16,61 @@ deadlock_free machine Ref1 refines abs::Abs {
         cars_to_mainland: nat,
     }
 
-    init(context) {
+    init: |context| Ref1 {
         cars_to_island: 0,
         cars_on_island: 0,
-        cars_to_mainland: 0
-    }
+        cars_to_mainland: 0,
+    },
 
-    lift(state) {
-        abs::Abs {
-            cars: state.total_cars(),
-        }
-    }
+    lift: |state| abs::Abs { cars: state.total_cars() },
 
-    invariant(context, state) {
+    invariant: |context, state| {
         ||| state.cars_to_island == 0
         ||| state.cars_to_mainland == 0
     }
 
-    variant(context, state) -> (nat, nat) {
+    variant: |context, state| -> (nat, nat) {
         (state.cars_to_island, state.cars_on_island)
     }
 
     refined event MainlandIn {
-        guard(context, state) {
-            state.cars_to_mainland > 0
-        }
-
-        action(context, state) {
-            Ref1 {
-                cars_to_mainland: (state.cars_to_mainland - 1) as nat,
-                ..state
-            }
-        }
+        guard: |context, state| state.cars_to_mainland > 0,
+        action: |context, state| Ref1 {
+            cars_to_mainland: (state.cars_to_mainland - 1) as nat,
+            ..state
+        },
     }
 
     refined event MainlandOut {
-        guard(context, state) {
+        guard: |context, state| {
             &&& state.cars_to_mainland == 0
             &&& state.total_cars() < context.max_cars
         }
-
-        action(context, state) {
-            Ref1 {
-                cars_to_island: state.cars_to_island + 1,
-                ..state
-            }
-        }
+        action: |context, state| Ref1 {
+            cars_to_island: state.cars_to_island + 1,
+            ..state
+        },
     }
 
     concrete event IslandIn {
-        guard(context, state) {
-            state.cars_to_island > 0
-        }
-
-        action(context, state) {
-            Ref1 {
-                cars_to_island: (state.cars_to_island - 1) as nat,
-                cars_on_island: state.cars_on_island + 1,
-                ..state
-            }
-        }
+        guard: |context, state| state.cars_to_island > 0,
+        action: |context, state| Ref1 {
+            cars_to_island: (state.cars_to_island - 1) as nat,
+            cars_on_island: state.cars_on_island + 1,
+            ..state
+        },
     }
 
     concrete event IslandOut {
-        guard(context, state) {
+        guard: |context, state| {
             &&& state.cars_on_island > 0
             &&& state.cars_to_island == 0
         }
-
-        action(context, state) {
-            Ref1 {
-                cars_on_island: (state.cars_on_island - 1) as nat,
-                cars_to_mainland: state.cars_to_mainland + 1,
-                ..state
-            }
-        }
+        action: |context, state| Ref1 {
+            cars_on_island: (state.cars_on_island - 1) as nat,
+            cars_to_mainland: state.cars_to_mainland + 1,
+            ..state
+        },
     }
 }
 

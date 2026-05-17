@@ -56,7 +56,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
         env: Environment,
     }
 
-    init(context) {
+    init: |context| Ref3 {
         con: Controller {
             flag_entered_mainland: Flag::Clear,
             flag_left_mainland: Flag::Clear,
@@ -83,23 +83,21 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
             sensor_island_in: Sensor::Off,
             sensor_island_out: Sensor::Off,
         },
-    }
+    },
 
-    lift(state) {
-        ref2::Ref2 {
-            cars_to_island: state.con.cars_to_island,
-            cars_on_island: state.con.cars_on_island,
-            cars_to_mainland: state.con.cars_to_mainland,
+    lift: |state| ref2::Ref2 {
+        cars_to_island: state.con.cars_to_island,
+        cars_on_island: state.con.cars_on_island,
+        cars_to_mainland: state.con.cars_to_mainland,
 
-            light_mainland: state.con.light_mainland,
-            light_island: state.con.light_island,
+        light_mainland: state.con.light_mainland,
+        light_island: state.con.light_island,
 
-            car_left_mainland: state.con.car_left_mainland,
-            car_left_island: state.con.car_left_island,
-        }
-    }
+        car_left_mainland: state.con.car_left_mainland,
+        car_left_island: state.con.car_left_island,
+    },
 
-    invariant(context, state) {
+    invariant: |context, state| {
         // Sensors detect the presence of physical cars
         &&& self.env.sensor_island_in.is_on() ==> self.env.cars_to_island > 0
         &&& self.env.sensor_island_out.is_on() ==> self.env.cars_on_island > 0
@@ -145,7 +143,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
         &&& self.env.cars_to_island + self.env.cars_on_island + self.env.cars_to_mainland <= context.max_cars
     }
 
-    variant(context, state) -> (bool, bool, bool, bool, bool, bool, bool, bool) {
+    variant: |context, state| -> (bool, bool, bool, bool, bool, bool, bool, bool) {
         (
             state.con.flag_left_mainland.is_clear(),
             state.con.flag_entered_mainland.is_clear(),
@@ -159,300 +157,246 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     refined event MainlandIn {
-        guard(context, state) {
+        guard: |context, state| {
             &&& state.con.flag_entered_mainland.is_set()
             &&& state.con.cars_to_mainland > 0
         }
-
-        action(context, state) {
-            Ref3 {
-                con: Controller {
-                    flag_entered_mainland: Flag::Clear,
-                    cars_to_mainland: (state.con.cars_to_mainland - 1) as nat,
-                    ..state.con
-                },
-                ..state
-            }
-        }
+        action: |context, state| Ref3 {
+            con: Controller {
+                flag_entered_mainland: Flag::Clear,
+                cars_to_mainland: (state.con.cars_to_mainland - 1) as nat,
+                ..state.con
+            },
+            ..state
+        },
     }
 
     refined event MainlandOut {
-        guard(context, state) {
+        guard: |context, state| {
             &&& state.con.flag_left_mainland.is_set()
             &&& state.con.total_cars() + 1 <= context.max_cars
         }
-
-        action(context, state) {
-            Ref3 {
-                con: Controller {
-                    flag_left_mainland: Flag::Clear,
-                    cars_to_island: state.con.cars_to_island + 1,
-                    light_mainland: if state.con.total_cars() + 1 == context.max_cars {
-                        TrafficLight::Red
-                    } else {
-                        TrafficLight::Green
-                    },
-                    car_left_mainland: true,
-                    ..state.con
+        action: |context, state| Ref3 {
+            con: Controller {
+                flag_left_mainland: Flag::Clear,
+                cars_to_island: state.con.cars_to_island + 1,
+                light_mainland: if state.con.total_cars() + 1 == context.max_cars {
+                    TrafficLight::Red
+                } else {
+                    TrafficLight::Green
                 },
-                ..state
-            }
-        }
+                car_left_mainland: true,
+                ..state.con
+            },
+            ..state
+        },
     }
 
     refined event IslandIn {
-        guard(context, state) {
+        guard: |context, state| {
             &&& state.con.flag_entered_island.is_set()
             &&& state.con.cars_to_island > 0
         }
-
-        action(context, state) {
-            Ref3 {
-                con: Controller {
-                    flag_entered_island: Flag::Clear,
-                    cars_to_island: (state.con.cars_to_island - 1) as nat,
-                    cars_on_island: state.con.cars_on_island + 1,
-                    ..state.con
-                },
-                ..state
-            }
-        }
+        action: |context, state| Ref3 {
+            con: Controller {
+                flag_entered_island: Flag::Clear,
+                cars_to_island: (state.con.cars_to_island - 1) as nat,
+                cars_on_island: state.con.cars_on_island + 1,
+                ..state.con
+            },
+            ..state
+        },
     }
 
     refined event IslandOut {
-        guard(context, state) {
+        guard: |context, state| {
             &&& state.con.flag_left_island.is_set()
             &&& state.con.cars_on_island > 0
         }
-
-        action(context, state) {
-            Ref3 {
-                con: Controller {
-                    flag_left_island: Flag::Clear,
-                    cars_on_island: (state.con.cars_on_island - 1) as nat,
-                    cars_to_mainland: state.con.cars_to_mainland + 1,
-                    light_island: if state.con.cars_on_island == 1 {
-                        TrafficLight::Red
-                    } else {
-                        TrafficLight::Green
-                    },
-                    car_left_island: true,
-                    ..state.con
+        action: |context, state| Ref3 {
+            con: Controller {
+                flag_left_island: Flag::Clear,
+                cars_on_island: (state.con.cars_on_island - 1) as nat,
+                cars_to_mainland: state.con.cars_to_mainland + 1,
+                light_island: if state.con.cars_on_island == 1 {
+                    TrafficLight::Red
+                } else {
+                    TrafficLight::Green
                 },
-                ..state
-            }
-        }
+                car_left_island: true,
+                ..state.con
+            },
+            ..state
+        },
     }
 
     refined event TurnGreenMainland {
-        guard(context, state) {
+        guard: |context, state| {
             &&& state.con.light_mainland.is_red()
             &&& state.con.car_left_island
             &&& state.con.flag_left_island.is_clear()
             &&& state.con.cars_to_mainland == 0
             &&& state.con.total_cars() < context.max_cars
         }
-
-        action(context, state) {
-            Ref3 {
-                con: Controller {
-                    light_mainland: TrafficLight::Green,
-                    light_island: TrafficLight::Red,
-                    car_left_mainland: false,
-                    ..state.con
-                },
-                ..state
-            }
-        }
+        action: |context, state| Ref3 {
+            con: Controller {
+                light_mainland: TrafficLight::Green,
+                light_island: TrafficLight::Red,
+                car_left_mainland: false,
+                ..state.con
+            },
+            ..state
+        },
     }
 
     refined event TurnGreenIsland {
-        guard(context, state) {
+        guard: |context, state| {
             &&& state.con.light_island.is_red()
             &&& state.con.car_left_mainland
             &&& state.con.flag_left_mainland.is_clear()
             &&& state.con.cars_on_island > 0
             &&& state.con.cars_to_island == 0
         }
-
-        action(context, state) {
-            Ref3 {
-                con: Controller {
-                    light_island: TrafficLight::Green,
-                    light_mainland: TrafficLight::Red,
-                    car_left_island: false,
-                    ..state.con
-                },
-                ..state
-            }
-        }
+        action: |context, state| Ref3 {
+            con: Controller {
+                light_island: TrafficLight::Green,
+                light_mainland: TrafficLight::Red,
+                car_left_island: false,
+                ..state.con
+            },
+            ..state
+        },
     }
 
     concrete event SensorMainlandOutArrive {
-        guard(context, state) {
+        guard: |context, state| {
             &&& state.env.sensor_mainland_out.is_off()
             &&& state.con.flag_left_mainland.is_clear()
         }
-
-        action(context, state) {
-            Ref3 {
-                env: Environment {
-                    sensor_mainland_out: Sensor::On,
-                    ..state.env
-                },
-                ..state
-            }
-        }
-
+        action: |context, state| Ref3 {
+            env: Environment {
+                sensor_mainland_out: Sensor::On,
+                ..state.env
+            },
+            ..state
+        },
     }
 
     concrete event SensorMainlandInArrive {
-        guard(context, state) {
+        guard: |context, state| {
             &&& state.env.sensor_mainland_in.is_off()
             &&& state.con.flag_entered_mainland.is_clear()
             &&& state.env.cars_to_mainland > 0
         }
-
-        action(context, state) {
-            Ref3 {
-                env: Environment {
-                    sensor_mainland_in: Sensor::On,
-                    ..state.env
-                },
-                ..state
-            }
-        }
-
+        action: |context, state| Ref3 {
+            env: Environment {
+                sensor_mainland_in: Sensor::On,
+                ..state.env
+            },
+            ..state
+        },
     }
 
     concrete event SensorIslandOutArrive {
-        guard(context, state) {
+        guard: |context, state| {
             &&& state.env.cars_on_island > 0
             &&& state.env.sensor_island_out.is_off()
             &&& state.con.flag_left_island.is_clear()
         }
-
-        action(context, state) {
-            Ref3 {
-                env: Environment {
-                    sensor_island_out: Sensor::On,
-                    ..state.env
-                },
-                ..state
-            }
-        }
-
+        action: |context, state| Ref3 {
+            env: Environment {
+                sensor_island_out: Sensor::On,
+                ..state.env
+            },
+            ..state
+        },
     }
 
     concrete event SensorIslandInArrive {
-        guard(context, state) {
+        guard: |context, state| {
             &&& state.env.cars_to_island > 0
             &&& state.env.sensor_island_in.is_off()
             &&& state.con.flag_entered_island.is_clear()
         }
-
-        action(context, state) {
-            Ref3 {
-                env: Environment {
-                    sensor_island_in: Sensor::On,
-                    ..state.env
-                },
-                ..state
-            }
-        }
-
+        action: |context, state| Ref3 {
+            env: Environment {
+                sensor_island_in: Sensor::On,
+                ..state.env
+            },
+            ..state
+        },
     }
 
     concrete event SensorMainlandOutDepart {
-        guard(context, state) {
+        guard: |context, state| {
             &&& state.env.sensor_mainland_out.is_on()
             &&& state.con.light_mainland.is_green()
         }
-
-        action(context, state) {
-            Ref3 {
-                con: Controller {
-                    flag_left_mainland: Flag::Set,
-                    ..state.con
-                },
-                env: Environment {
-                    sensor_mainland_out: Sensor::Off,
-                    cars_to_island: state.env.cars_to_island + 1,
-                    ..state.env
-                },
-                ..state
-            }
-        }
-
+        action: |context, state| Ref3 {
+            con: Controller {
+                flag_left_mainland: Flag::Set,
+                ..state.con
+            },
+            env: Environment {
+                sensor_mainland_out: Sensor::Off,
+                cars_to_island: state.env.cars_to_island + 1,
+                ..state.env
+            },
+            ..state
+        },
     }
 
     concrete event SensorMainlandInDepart {
-        guard(context, state) {
-            state.env.sensor_mainland_in.is_on()
-        }
-
-        action(context, state) {
-            Ref3 {
-                con: Controller {
-                    flag_entered_mainland: Flag::Set,
-                    ..state.con
-                },
-                env: Environment {
-                    sensor_mainland_in: Sensor::Off,
-                    cars_to_mainland: (state.env.cars_to_mainland - 1) as nat,
-                    ..state.env
-                },
-                ..state
-            }
-        }
-
+        guard: |context, state| state.env.sensor_mainland_in.is_on(),
+        action: |context, state| Ref3 {
+            con: Controller {
+                flag_entered_mainland: Flag::Set,
+                ..state.con
+            },
+            env: Environment {
+                sensor_mainland_in: Sensor::Off,
+                cars_to_mainland: (state.env.cars_to_mainland - 1) as nat,
+                ..state.env
+            },
+            ..state
+        },
     }
 
     concrete event SensorIslandOutDepart {
-        guard(context, state) {
+        guard: |context, state| {
             &&& state.env.sensor_island_out.is_on()
             &&& state.con.light_island.is_green()
         }
-
-        action(context, state) {
-            Ref3 {
-                con: Controller {
-                    flag_left_island: Flag::Set,
-                    ..state.con
-                },
-                env: Environment {
-                    sensor_island_out: Sensor::Off,
-                    cars_on_island: (state.env.cars_on_island - 1) as nat,
-                    cars_to_mainland: state.env.cars_to_mainland + 1,
-                    ..state.env
-                },
-                ..state
-            }
-        }
-
+        action: |context, state| Ref3 {
+            con: Controller {
+                flag_left_island: Flag::Set,
+                ..state.con
+            },
+            env: Environment {
+                sensor_island_out: Sensor::Off,
+                cars_on_island: (state.env.cars_on_island - 1) as nat,
+                cars_to_mainland: state.env.cars_to_mainland + 1,
+                ..state.env
+            },
+            ..state
+        },
     }
 
     concrete event SensorIslandInDepart {
-        guard(context, state) {
-            state.env.sensor_island_in.is_on()
-        }
-
-        action(context, state) {
-            Ref3 {
-                con: Controller {
-                    flag_entered_island: Flag::Set,
-                    ..state.con
-                },
-                env: Environment {
-                    sensor_island_in: Sensor::Off,
-                    cars_to_island: (state.env.cars_to_island - 1) as nat,
-                    cars_on_island: state.env.cars_on_island + 1,
-                    ..state.env
-                },
-                ..state
-            }
-        }
-
+        guard: |context, state| state.env.sensor_island_in.is_on(),
+        action: |context, state| Ref3 {
+            con: Controller {
+                flag_entered_island: Flag::Set,
+                ..state.con
+            },
+            env: Environment {
+                sensor_island_in: Sensor::Off,
+                cars_to_island: (state.env.cars_to_island - 1) as nat,
+                cars_on_island: state.env.cars_on_island + 1,
+                ..state.env
+            },
+            ..state
+        },
     }
 }
 

@@ -11,7 +11,7 @@ machine Abs {
         player_count: nat,
     }
 
-    valid(context) {
+    valid: |context| {
         &&& context.board_size > 1
         &&& context.player_count > 0
     }
@@ -21,12 +21,12 @@ machine Abs {
         next_player: int,
     }
 
-    init(context) {
+    init: |context| Abs {
         player_positions: Seq::new(context.player_count, |i| { 0 }),
         next_player: 0,
-    }
+    },
 
-    invariant(context, state) {
+    invariant: |context, state| {
         // Player count can't change
         &&& state.player_positions.len() == context.player_count
         // All players on the board
@@ -42,18 +42,16 @@ machine Abs {
     }
 
     event Turn(move_to: int) {
-        guard(context, state) {
+        guard: |context, state| {
             // Game not over
             &&& !state.is_done(context)
             // Valid next position
             &&& context.valid_position(move_to)
         }
 
-        action(context, state) {
-            Abs {
-                player_positions: state.move_player(state.next_player, move_to),
-                next_player: state.advance_player(),
-            }
+        action: |context, state| Abs {
+            player_positions: state.move_player(state.next_player, move_to),
+            next_player: state.advance_player(),
         }
     }
 }

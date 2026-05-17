@@ -10,58 +10,30 @@ deadlock_free machine Buf0 {
         max_size: nat,
     }
 
-    valid(context) {
-        context.max_size > 0
-    }
+    valid: |context| context.max_size > 0,
 
     state {
         size: nat,
     }
 
-    init(context) {
-        size: 0
-    }
+    init: |context| Buf0 { size: 0 },
 
-    invariant(context, state) {
-        state.size <= context.max_size
-    }
+    invariant: |context, state| state.size <= context.max_size,
 
     event Put {
-        guard(context, state) {
-            state.size < context.max_size
-        }
-
-        action(context, state) {
-            Buf0 {
-                size: state.size + 1,
-            }
-        }
+        guard: |context, state| state.size < context.max_size,
+        action: |context, state| Buf0 { size: state.size + 1 },
     }
 
     event Fetch {
-        guard(context, state) {
-            state.size > 0
-        }
-
-        action(context, state) {
-            Buf0 {
-                size: (state.size - 1) as nat,
-            }
-        }
+        guard: |context, state| state.size > 0,
+        action: |context, state| Buf0 { size: (state.size - 1) as nat },
     }
 
     event GetSize -> nat {
-        guard(context, state) {
-            true
-        }
-
-        action(context, state) {
-            state
-        }
-
-        output(context, state) {
-            state.size
-        }
+        guard: |context, state| true,
+        action: |context, state| state,
+        output: |context, state| state.size,
     }
 }
 

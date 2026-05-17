@@ -10,46 +10,30 @@ deadlock_free machine Abs {
         max_cars: nat,
     }
 
-    valid(context) {
-        context.max_cars > 0
-    }
+    valid: |context| context.max_cars > 0,
 
     state {
         cars: nat,
     }
 
-    init(context) {
-        cars: 0
-    }
+    init: |context| Abs { cars: 0 },
 
-    invariant(context, state) {
-        state.cars <= context.max_cars
-    }
+    invariant: |context, state| state.cars <= context.max_cars,
 
     event MainlandIn {
-        guard(context, state) {
-            state.cars > 0
-        }
-
-        action(context, state) {
-            Abs {
-                cars: (state.cars - 1) as nat,
-                ..state
-            }
-        }
+        guard: |context, state| state.cars > 0,
+        action: |context, state| Abs {
+            cars: (state.cars - 1) as nat,
+            ..state
+        },
     }
 
     event MainlandOut {
-        guard(context, state) {
-            state.cars < context.max_cars
-        }
-
-        action(context, state) {
-            Abs {
-                cars: state.cars + 1,
-                ..state
-            }
-        }
+        guard: |context, state| state.cars < context.max_cars,
+        action: |context, state| Abs {
+            cars: state.cars + 1,
+            ..state
+        },
     }
 }
 

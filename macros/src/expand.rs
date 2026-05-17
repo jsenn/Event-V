@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote, quote_spanned};
+use quote::{format_ident, quote, quote_spanned, ToTokens};
 use syn::Path;
 
 use crate::parse::*;
@@ -13,6 +13,22 @@ fn abstract_event_path(refines_path: &Path, event_name: &syn::Ident) -> TokenStr
         last.arguments = syn::PathArguments::None;
     }
     quote! { #path }
+}
+
+fn typed_param(p: &ClosureParam, fallback: impl ToTokens) -> TokenStream {
+    let name = &p.name;
+    match &p.ty {
+        Some(ty) => quote! { #name: #ty },
+        None => quote! { #name: #fallback },
+    }
+}
+
+fn let_param(p: &ClosureParam) -> TokenStream {
+    let name = &p.name;
+    match &p.ty {
+        Some(ty) => quote! { #name: #ty },
+        None => quote! { #name },
+    }
 }
 
 pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
@@ -31,14 +47,14 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         }
         if let Some(lc) = &decl.lift_context {
             return syn::Error::new(
-                lc.context_name.span(),
+                lc.context.name.span(),
                 "'lift_context' may only appear in a machine that 'refines' another",
             )
             .to_compile_error();
         }
         if let Some(p) = &decl.proof_lift_context_valid {
             return syn::Error::new(
-                p.context_name.span(),
+                p.context.name.span(),
                 "'proof_lift_context_valid' may only appear in a machine that 'refines' another",
             )
             .to_compile_error();
@@ -79,16 +95,16 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
     };
 
     let validate_impl = if let Some(ref inv) = decl.invariant {
-        let inv_context = &inv.context_name;
-        let inv_state = &inv.state_name;
+        let inv_context_sig = typed_param(&inv.context, &context_type);
+        let inv_state_let = let_param(&inv.state);
         let inv_body = &inv.body;
 
         if decl.refines.is_some() {
-            let lifted = lifted_context(inv_context);
+            let lifted = lifted_context(&inv.context.name);
             quote! {
                 impl #name {
-                    pub open spec fn validate(&self, #inv_context: #context_type) -> bool {
-                        let #inv_state = *self;
+                    pub open spec fn validate(&self, #inv_context_sig) -> bool {
+                        let #inv_state_let = *self;
                         self.lift().validate(#lifted) && { #inv_body }
                     }
                 }
@@ -96,8 +112,8 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         } else {
             quote! {
                 impl #name {
-                    pub open spec fn validate(&self, #inv_context: #context_type) -> bool {
-                        let #inv_state = *self;
+                    pub open spec fn validate(&self, #inv_context_sig) -> bool {
+                        let #inv_state_let = *self;
                         #inv_body
                     }
                 }
@@ -135,9 +151,9 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
     };
 
     // --- Init impl ---
-    let init_context = &decl.init.context_name;
+    let init_context_sig = typed_param(&decl.init.context, &context_type);
     let init_body = &decl.init.body;
-    let init_span = init_context.span();
+    let init_span = decl.init.context.name.span();
     let init_impl = quote_spanned! { init_span =>
         #[allow(dead_code)]
         pub struct Initialize;
@@ -145,10 +161,8 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         impl Init<#name> for Initialize {
             type Input = ();
 
-            open spec fn init(#init_context: #context_type, _input: ()) -> #name {
-                #name {
-                    #init_body
-                }
+            open spec fn init(#init_context_sig, _input: ()) -> #name {
+                #init_body
             }
 
             proof fn proof_safety(_context: #context_type, _input: ()) {}
@@ -162,18 +176,18 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             None => {
                 return syn::Error::new(
                     name.span(),
-                    "a machine that 'refines' another must declare a 'lift(state) { ... }' block",
+                    "a machine that 'refines' another must declare a 'lift: |state| ...' block",
                 )
                 .to_compile_error();
             }
         };
-        let lift_state = &lift_decl.state_name;
+        let lift_state_sig = typed_param(&lift_decl.state, name);
         let lift_body = &lift_decl.body;
 
-        let (lc_context, lc_body) = match &decl.lift_context {
-            Some(lc) => (lc.context_name.clone(), lc.body.clone()),
+        let (lc_context_sig, lc_body) = match &decl.lift_context {
+            Some(lc) => (typed_param(&lc.context, &context_type), lc.body.clone()),
             None => (
-                syn::Ident::new("context", name.span()),
+                quote! { context: #context_type },
                 quote! { context },
             ),
         };
@@ -194,13 +208,13 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
 
         quote! {
             impl Lift<#name, #refines_path> for #name {
-                open spec fn lift(#lift_state: #name) -> #refines_path {
+                open spec fn lift(#lift_state_sig) -> #refines_path {
                     #lift_body
                 }
             }
 
             impl Lift<#context_type, <#refines_path as Machine>::Context> for #name {
-                open spec fn lift(#lc_context: #context_type) -> <#refines_path as Machine>::Context {
+                open spec fn lift(#lc_context_sig) -> <#refines_path as Machine>::Context {
                     #lc_body
                 }
             }
@@ -224,15 +238,15 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         let has_concrete_event = decl.events.iter().any(|e| e.concrete);
         let convergent_impl = match (&decl.variant, has_concrete_event) {
             (Some(v), _) => {
-                let v_context = &v.context_name;
-                let v_state = &v.state_name;
+                let v_context_sig = typed_param(&v.context, quote! { Self::Context });
+                let v_state_sig = typed_param(&v.state, quote! { Self });
                 let v_ty = &v.ret_type;
                 let v_body = &v.body;
                 quote! {
                     impl ConvergentRefinement for #name {
                         type Variant = #v_ty;
 
-                        open spec fn variant(#v_context: Self::Context, #v_state: Self) -> Self::Variant {
+                        open spec fn variant(#v_context_sig, #v_state_sig) -> Self::Variant {
                             #v_body
                         }
                     }
@@ -241,7 +255,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             (None, true) => {
                 let err = syn::Error::new(
                     name.span(),
-                    "machine with 'concrete' events must declare a machine-level 'variant(context, state) -> Type { ... }' block",
+                    "machine with 'concrete' events must declare a machine-level 'variant: |context, state| -> Type { ... }' block",
                 );
                 return err.to_compile_error();
             }
@@ -250,10 +264,10 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
 
         let proof_lift_context_valid_fn = match &decl.proof_lift_context_valid {
             Some(p) => {
-                let p_context = &p.context_name;
+                let p_context_sig = typed_param(&p.context, &context_type);
                 let p_body = &p.body;
                 quote! {
-                    proof fn proof_lift_context_valid(#p_context: #context_type) {
+                    proof fn proof_lift_context_valid(#p_context_sig) {
                         #p_body
                     }
                 }
@@ -265,11 +279,11 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
 
         let proof_lift_safe_fn = match &decl.proof_lift_safe {
             Some(p) => {
-                let p_context = &p.context_name;
-                let p_state = &p.state_name;
+                let p_context_sig = typed_param(&p.context, &context_type);
+                let p_state_sig = typed_param(&p.state, quote! { Self });
                 let p_body = &p.body;
                 quote_spanned! { p.span =>
-                    proof fn proof_lift_safe(#p_context: #context_type, #p_state: Self) {
+                    proof fn proof_lift_safe(#p_context_sig, #p_state_sig) {
                         #p_body
                     }
                 }
@@ -373,12 +387,12 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
                 .collect();
 
             let valid_impl = if let Some(v) = valid {
-                let v_context = &v.context_name;
+                let v_context_let = let_param(&v.context);
                 let v_body = &v.body;
                 quote! {
                     impl MachineContext for Context {
                         open spec fn valid(&self) -> bool {
-                            let #v_context = *self;
+                            let #v_context_let = *self;
                             #v_body
                         }
                     }
@@ -435,12 +449,12 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
     let context_type = decl.context.spec_type();
     let event_name = &evt.name;
 
-    let guard_context = &evt.guard.context_name;
-    let guard_state = &evt.guard.state_name;
+    let guard_context = typed_param(&evt.guard.context, &context_type);
+    let guard_state = typed_param(&evt.guard.state, machine_name);
     let guard_body = &evt.guard.body;
 
-    let action_context = &evt.action.context_name;
-    let action_state = &evt.action.state_name;
+    let action_context = typed_param(&evt.action.context, &context_type);
+    let action_state = typed_param(&evt.action.state, machine_name);
     let action_body = &evt.action.body;
 
     // --- Input type and parameter tokens ---
@@ -471,11 +485,11 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
 
     // --- Output function body ---
     let output_fn = if let Some(ref output) = evt.output {
-        let out_context = &output.context_name;
-        let out_state = &output.state_name;
+        let out_context = typed_param(&output.context, &context_type);
+        let out_state = typed_param(&output.state, machine_name);
         let out_body = &output.body;
         quote! {
-            open spec fn output(#out_context: #context_type, #out_state: #machine_name, #input_param) -> #output_type {
+            open spec fn output(#out_context, #out_state, #input_param) -> #output_type {
                 #out_body
             }
         }
@@ -494,7 +508,11 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
     };
 
     let (safety_span, safety_body, safety_params) = match &evt.safety_proof {
-        Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { context: #context_type, state: #machine_name, #input_param }),
+        Some(p) => {
+            let ctx = typed_param(&p.context, &context_type);
+            let st = typed_param(&p.state, machine_name);
+            (p.span, { let b = &p.body; quote! { #b } }, quote! { #ctx, #st, #input_param })
+        }
         None => (event_name.span(), quote! {}, quote! { _context: #context_type, _state: #machine_name, #input_param_unused }),
     };
     let event_impl = quote_spanned! { safety_span =>
@@ -502,11 +520,11 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
             type Input = #input_type;
             type Output = #output_type;
 
-            open spec fn guard(#guard_context: #context_type, #guard_state: #machine_name, #input_param) -> bool {
+            open spec fn guard(#guard_context, #guard_state, #input_param) -> bool {
                 #guard_body
             }
 
-            open spec fn action(#action_context: #context_type, #action_state: #machine_name, #input_param) -> #machine_name {
+            open spec fn action(#action_context, #action_state, #input_param) -> #machine_name {
                 #action_body
             }
 
@@ -524,12 +542,11 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
 
             // lift_in: map concrete input to abstract input.
             let lift_in_fn = if let Some(ref li) = evt.lift_in {
-                let li_context = &li.context_name;
-                let li_state = &li.state_name;
-                let li_input = &li.input_name;
+                let li_context = typed_param(&li.context, &context_type);
+                let li_state = typed_param(&li.state, machine_name);
                 let li_body = &li.body;
                 quote! {
-                    open spec fn lift_in(#li_context: #context_type, #li_state: #machine_name, #li_input: #input_type)
+                    open spec fn lift_in(#li_context, #li_state, #input_param)
                         -> <#abstract_event as Event<#refines_path>>::Input
                     {
                         #li_body
@@ -538,7 +555,7 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
             } else if evt.input.is_some() {
                 return syn::Error::new(
                     evt.name.span(),
-                    "refined event with an input must declare a 'lift_in(context, state, input) { ... }' \
+                    "refined event with an input must declare a 'lift_in: |context, state| ...' \
                      block mapping the concrete input to the abstract input",
                 )
                 .to_compile_error();
@@ -554,10 +571,10 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
 
             // lift_out: map concrete output to abstract output.
             let lift_out_fn = if let Some(ref lo) = evt.lift_out {
-                let lo_param = &lo.param_name;
+                let lo_param = typed_param(&lo.param, &output_type);
                 let lo_body = &lo.body;
                 quote! {
-                    open spec fn lift_out(#lo_param: #output_type)
+                    open spec fn lift_out(#lo_param)
                         -> <#abstract_event as Event<#refines_path>>::Output
                     {
                         #lo_body
@@ -574,11 +591,19 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
             };
 
             let (_str_span, str_body, str_params) = match &evt.strengthening_proof {
-                Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { context: #context_type, state: #machine_name, #input_param }),
+                Some(p) => {
+                    let ctx = typed_param(&p.context, &context_type);
+                    let st = typed_param(&p.state, machine_name);
+                    (p.span, { let b = &p.body; quote! { #b } }, quote! { #ctx, #st, #input_param })
+                }
                 None => (event_name.span(), quote! {}, quote! { _context: #context_type, _state: #machine_name, #input_param_unused }),
             };
             let (_sim_span, sim_body, sim_params) = match &evt.simulation_proof {
-                Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { context: #context_type, state: #machine_name, #input_param }),
+                Some(p) => {
+                    let ctx = typed_param(&p.context, &context_type);
+                    let st = typed_param(&p.state, machine_name);
+                    (p.span, { let b = &p.body; quote! { #b } }, quote! { #ctx, #st, #input_param })
+                }
                 None => (event_name.span(), quote! {}, quote! { _context: #context_type, _state: #machine_name, #input_param_unused }),
             };
             let refined_span = evt.strengthening_proof.as_ref()
@@ -607,11 +632,19 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
 
     let new_impl = if evt.concrete {
         let (stut_span, stut_body, stut_params) = match &evt.stuttering_proof {
-            Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { context: #context_type, state: #machine_name, #input_param }),
+            Some(p) => {
+                let ctx = typed_param(&p.context, &context_type);
+                let st = typed_param(&p.state, machine_name);
+                (p.span, { let b = &p.body; quote! { #b } }, quote! { #ctx, #st, #input_param })
+            }
             None => (event_name.span(), quote! {}, quote! { _context: #context_type, _state: #machine_name, #input_param_unused }),
         };
         let (conv_span, conv_body, conv_params) = match &evt.convergence_proof {
-            Some(p) => (p.span, { let b = &p.body; quote! { #b } }, quote! { context: #context_type, state: #machine_name, #input_param }),
+            Some(p) => {
+                let ctx = typed_param(&p.context, &context_type);
+                let st = typed_param(&p.state, machine_name);
+                (p.span, { let b = &p.body; quote! { #b } }, quote! { #ctx, #st, #input_param })
+            }
             None => (event_name.span(), quote! {}, quote! { _context: #context_type, _state: #machine_name, #input_param_unused }),
         };
         let conv_method = quote_spanned! { conv_span =>

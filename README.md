@@ -18,7 +18,7 @@ machine Counter {
         max_value: nat,
     }
 
-    valid(context) {
+    valid: |context| {
         // A counter with `max_value == 0` could never be incremented or decremented, which would
         // be quite boring
         context.max_value > 0
@@ -32,44 +32,32 @@ machine Counter {
     }
 
     // This machine has a single **initialization event**, which sets the counter's value to 0.
-    init(context) {
-        value: 0
-    }
+    init: |context| Counter { value: 0 },
 
     // Every machine has an **invariant** that determines whether it is in a valid state or not.
     // For our counter machine, the invariant is that the value does not exceed the configured
     // `max_value`. Note that because the value is declared as `nat`, it must also be non-negative,
     // but we don't have to explicitly add that in the invariant.
-    invariant(context, state) {
-        state.value <= context.max_value
-    }
+    invariant: |context, state| state.value <= context.max_value,
 
     // The machine's first event increments the counter by 1. It may only fire if the current value
     // is less than the max value.
     event Increment {
         // An event's **guard** determines when it is valid for the event to fire. In this case, we
         // may only increment a counter whose value is less than the max value.
-        guard(context, state) {
-            state.value < context.max_value
-        }
+        guard: |context, state| state.value < context.max_value,
 
         // The **action** for an event defines how the machine's state changes after the event
         // fires. In this case, the post-action state has its value incremented by 1.
-        action(context, state) {
-            Counter {
-                value: state.value + 1,
-            }
-        }
+        action: |context, state| Counter { value: state.value + 1 },
     }
 
     // The Decrement event is similar in structure to Increment, except that its guard requires
     // that the current value be greater than zero.
     event Decrement {
-        guard(context, state) {
-            state.value > 0
-        }
+        guard: |context, state| state.value > 0,
 
-        action(context, state) {
+        action: |context, state| {
             // Subtracting two `nat`s produces an `int` in Verus. The `as nat` below casts it back
             // to `nat`.
             Counter {

@@ -1,3 +1,17 @@
+//! This module contains the most abstract version of Snakes and Ladders. At this level, the board
+//! is abstracted away completely; the model only knows the board's size. What the model *does*
+//! track:
+//! 1. Players' positions on the board
+//! 2. Whose turn it is
+//! 3. Whether or not anyone has won the game yet.
+//! 
+//! The single event is `Turn`, which moves the next player to a given board position, and passes
+//! play to the next player.
+//! 
+//! The machine is not deadlock-free, as once the game is won no more `Turn`s can take place.
+//! However, a modified deadlock freedom property *does* hold, and is proved. Namely, *until the
+//! game has been won*, there is no deadlock: all games continue until some player wins.
+
 use vstd::prelude::*;
 
 use event_v::machine::*;

@@ -204,4 +204,29 @@ proof fn proof_winnable(context: Context, state: Board)
         context, state.player_positions[state.next_player], context.board.len());
 }
 
+/// Just for demonstration, we construct a realistic snakes and ladders board cribbed from
+/// [wikipedia](https://en.wikipedia.org/wiki/Snakes_and_ladders#/media/File:Berrington_Hall_-_snakes_and_ladders_(13826426425).jpg)
+/// and show that Z3 can automatically prove that it is valid.
+proof fn proof_board_valid() {
+    let squares = seq![
+        0, 0, 0, 0, 0, 0, 0, 18, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        61, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 34, -22, 0, -41, 0, -39, 0, 41,
+        0, -41, 0, 39, -48, 0, 0, 0, -42, 0,
+        0, 34, 0, -28, 0, 21, 0, 0, -60, 0,
+        0, 0, -72, 0, 0, 0, 0, 0, 0, 20,
+        0, 0, -64, 0, 0, 0, 0, 0, 0, 0,
+        0, -41, 0, 0, -71, 0, 0, -70, 0, 0
+    ];
+
+    let context = Context {
+        board: squares,
+        player_count: 2,
+    };
+
+    assert(context.valid());
+}
+
 }

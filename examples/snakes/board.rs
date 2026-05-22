@@ -69,17 +69,13 @@ machine Board refines abs::Abs {
                 0 <= i < context.board.len() && context.board[i] != 0 ==>
                     context.board[i + context.board[i]] == 0
         // Board is winnable: every square other than the winning square has another square at most
-        // 6 squares ahead that will permit forward progress. e.g. having 6 snakes in a row that
-        // push you backwards would be illegal.
-        &&& forall |i: int| #![trigger context.board[i]]
-                0 <= i < context.board.len() - 1 ==> {
-                    ||| i+1 + context.board[i+1] > i
-                    ||| i+2 + context.board[i+2] > i
-                    ||| i+3 + context.board[i+3] > i
-                    ||| i+4 + context.board[i+4] > i
-                    ||| i+5 + context.board[i+5] > i
-                    ||| i+6 + context.board[i+6] > i
-                }
+        // 6 squares ahead that will permit forward progress. This rules out any sequence of 6 or
+        // more snake heads ahead of some position i where the tail of each snake lands before i.
+        // Note that this is a stronger requirement than winnability, but it is much easier for Z3
+        // to prove.
+        &&& forall |i: int|
+                0 <= i < context.board.len() - 1 ==>
+                    #[trigger] context.has_forward_progress(i)
     }
 
     state {
@@ -131,16 +127,29 @@ machine Board refines abs::Abs {
 
 verus! {
 
+impl Context {
+    /// Determine whether there is some dice roll that makes forward progress from a given square.
+    pub open spec fn has_forward_progress(&self, pos: int) -> bool {
+        ||| Board::step(*self, pos, 1) > pos
+        ||| Board::step(*self, pos, 2) > pos
+        ||| Board::step(*self, pos, 3) > pos
+        ||| Board::step(*self, pos, 4) > pos
+        ||| Board::step(*self, pos, 5) > pos
+        ||| Board::step(*self, pos, 6) > pos
+    }
+}
+
 impl Board {
+    /// Calculate where the next player will land after the given roll.
     pub open spec fn take_turn(self, context: Context, roll: DiceRoll) -> int {
         let curr_pos = self.player_positions[self.next_player];
-        Self::step(context, curr_pos, roll)
+        Self::step(context, curr_pos, roll.value())
     }
 
-    /// Compute the square a player at the given position would land on after taking the given
-    /// roll, taking into account snakes and ladders.
-    pub open spec fn step(context: Context, curr_pos: int, roll: DiceRoll) -> int {
-        let roll_pos = curr_pos + roll.value();
+    /// Compute the square a player at the given position would land on after rolling a die
+    /// showing `n`, taking into account snakes and ladders.
+    pub open spec fn step(context: Context, curr_pos: int, n: nat) -> int {
+        let roll_pos = curr_pos + n;
         if roll_pos >= context.board.len() {
             context.board.len() - 1
         } else {
@@ -156,9 +165,43 @@ impl Board {
         // Base case: `pos` *is* the winning square
         ||| pos == context.board.len() - 1
         // Induction: we can win from some square within a dice roll of `pos`
-        ||| (fuel > 0 && exists |roll: DiceRoll|
-                Self::can_win_from(context, Self::step(context, pos, roll), (fuel - 1) as nat))
+        ||| (fuel > 0 && exists |n: nat| #![auto]
+                1 <= n <= 6
+             && Self::can_win_from(
+                    context, Self::step(context, pos, n), (fuel - 1) as nat))
     }
+}
+
+// From any given square on the board, you can win in at most board size - 1 - i moves.
+// This follows from the requirement that every square permit forward progress for some dice roll.
+proof fn lemma_can_win_from(context: Context, i: int, fuel: nat)
+    requires
+        context.valid(),
+        0 <= i < context.board.len(),
+        fuel + i >= context.board.len() - 1,
+    ensures
+        Board::can_win_from(context, i, fuel),
+    decreases context.board.len() - i,
+{
+    if i < context.board.len() - 1 {
+        assert(context.has_forward_progress(i));
+        let n = choose |n: nat| 1 <= n <= 6 && Board::step(context, i, n) > i;
+        lemma_can_win_from(context, Board::step(context, i, n), (fuel - 1) as nat);
+    }
+}
+
+/// The game is winnable from the next player's current position. Since no assumption is
+/// made about state beyond validity and the invariant, every reachable state is winnable.
+proof fn proof_winnable(context: Context, state: Board)
+    requires
+        context.valid(),
+        Board::invariant(context, state),
+    ensures
+        Board::can_win_from(
+            context, state.player_positions[state.next_player], context.board.len()),
+{
+    lemma_can_win_from(
+        context, state.player_positions[state.next_player], context.board.len());
 }
 
 }

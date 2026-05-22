@@ -1,18 +1,6 @@
 use vstd::prelude::*;
 
-use event_v::machine::MachineContext;
-
 verus! {
-
-pub struct BridgeContext {
-    pub max_cars: nat,
-}
-
-impl MachineContext for BridgeContext {
-    open spec fn valid(&self) -> bool {
-        self.max_cars > 0
-    }
-}
 
 pub enum TrafficLight {
     Red,

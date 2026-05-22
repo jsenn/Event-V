@@ -1,5 +1,5 @@
-# Bridge (manual version)
-This shows an equivalent of the [bridge example](../bridge/) but without using the macro syntax. Instead, the full trait machinery of Event-V is spelled out manually. There are pros and cons of this workflow.
+# Buffer (manual version)
+This shows an equivalent of the [buffer example](../buffer/) but without using the macro syntax. Instead, the full trait machinery of Event-V is spelled out manually. There are pros and cons of this workflow.
 
 Pros:
 * Explicit, normal Rust/Verus with no special syntax to remember

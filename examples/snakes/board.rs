@@ -184,8 +184,11 @@ proof fn lemma_can_win_from(context: Context, i: int, fuel: nat)
     decreases context.board.len() - i,
 {
     if i < context.board.len() - 1 {
+        // Bring the forward progress assertion into context
         assert(context.has_forward_progress(i));
+        // Choose a specific dice roll with forward progress
         let n = choose |n: nat| 1 <= n <= 6 && Board::step(context, i, n) > i;
+        // Recurse using that dice roll
         lemma_can_win_from(context, Board::step(context, i, n), (fuel - 1) as nat);
     }
 }

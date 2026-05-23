@@ -219,10 +219,15 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
                 }
             }
 
-            // `&self` convenience for the state lift, so DSL bodies can write `state.lift()`.
             impl #name {
                 pub open spec fn lift(&self) -> #refines_path {
                     <#name as Lift<#name, #refines_path>>::lift(*self)
+                }
+
+                pub open spec fn lift_context(context: #context_type)
+                    -> <#refines_path as Machine>::Context
+                {
+                    <#name as Lift<#context_type, <#refines_path as Machine>::Context>>::lift(context)
                 }
             }
 

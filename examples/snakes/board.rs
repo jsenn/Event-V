@@ -1,13 +1,7 @@
-//! The first refinement of the abstract Snakes and Ladders model introduces 2 new concepts:
-//! 1. The board itself
-//! 2. Dice rolls
-//! 
-//! In the abstract machine, the board was completely abstracted away to just its size, and turns
-//! could take a place to any arbitrary square. Here, the board is fully represented as described
-//! below. Player movements are constrained by rolls of 6-sided dice, and by the board.
+//! Here we create an abstract model of a Snakes and Ladders board.
 //! 
 //! # Board Representation
-//! A snakes and ladders board is a linear sequence of squares from the starting square to the
+//! A Snakes and Ladders board is a linear sequence of squares from the starting square to the
 //! final winning square. A player moves forward along the board by the number of squares shown on
 //! the dice after their roll. If the new square is at the foot of a **ladder**, the player
 //! immediately moves their piece to the square at which the top of the ladder resides; if instead
@@ -36,200 +30,152 @@
 //!    temporarily backwards. However, it is tedious to prove for any given board that it is
 //!    winnable in the abstract sense, but it is trivial for Z3 to prove automatically that every
 //!    square can make forward progress.
-
 use vstd::prelude::*;
 
-use event_v::machine::*;
-use event_v::machine;
+use event_v::machine::MachineContext;
 
-use crate::abs;
-use crate::shared::DiceRoll;
+verus! {
 
-machine! {
+/// Represents a Snakes and Ladders board. A board is modeled as a sequence of squares. Each square
+/// contains an integer which indicates how far forward or backward players must move upon landing.
+/// A square that is at the base of a ladder will have a positive number; one that is at the head
+/// of a snake will be negative. A value of zero indicates a neutral square.
+pub struct Board {
+    pub squares: Seq<int>,
+}
 
-machine Board refines abs::Abs {
-    context {
-        board: Seq<int>,
-        player_count: nat,
+impl Board {
+    /// Get the total number of squares on the board.
+    pub open spec fn len(self) -> nat {
+        self.squares.len()
     }
 
-    valid: |context| {
-        // Someone is playing
-        &&& context.player_count > 0
+    /// Compute the square a player at the given position would land on after rolling a die
+    /// showing `n`, taking into account snakes and ladders.
+    pub open spec fn step(self, roll_pos: int) -> int {
+        if roll_pos >= self.len() {
+            self.len() - 1
+        } else {
+            roll_pos + self.squares[roll_pos]
+        }
+    }
+
+    /// Determine whether a player can come to rest at the given board position. Returns false if
+    /// the given position is at the head of a snake or the bottom of a ladder.
+    pub open spec fn is_at_rest(self, pos: int) -> bool {
+        self.squares[pos] == 0
+    }
+
+    /// Determine if the winning square is reachable from the given board position.
+    pub open spec fn can_win_from(self, pos: int) -> bool {
+        exists |rolls: nat| self.can_win_from_within(pos, rolls)
+    }
+
+    /// Determine if the winning square is reachable from the given board position within the given
+    /// number of dice rolls.
+    pub open spec fn can_win_from_within(self, pos: int, rolls: nat) -> bool
+        decreases rolls
+    {
+        // Base case: `pos` is the winning square
+        ||| pos == self.len() - 1
+        // Induction: some dice roll lands on a square we can win from
+        ||| (rolls > 0 && exists |n: nat| #![trigger self.step(pos + n)] {
+            &&& 1 <= n <= 6
+            &&& self.can_win_from_within(self.step(pos + n), (rolls - 1) as nat)
+        })
+    }
+
+    /// Determine whether there is some dice roll that makes forward progress from a given square.
+    pub open spec fn has_forward_progress(self, pos: int) -> bool {
+        ||| self.step(pos + 1) > pos
+        ||| self.step(pos + 2) > pos
+        ||| self.step(pos + 3) > pos
+        ||| self.step(pos + 4) > pos
+        ||| self.step(pos + 5) > pos
+        ||| self.step(pos + 6) > pos
+    }
+}
+
+impl MachineContext for Board {
+    open spec fn valid(&self) -> bool {
         // Board isn't degenerate (at least one turn to traverse)
-        &&& context.board.len() > 1
+        &&& self.len() > 1
         // Snakes and ladders can't take you off the board
-        &&& forall |i: int| #![trigger context.board[i]]
-                0 <= i < context.board.len() ==>
-                    0 <= i + context.board[i] < context.board.len()
+        &&& forall |i: int| #![trigger self.squares[i]]
+                0 <= i < self.len() ==>
+                    0 <= i + self.squares[i] < self.len()
         // No snakes or ladders on first or last square
-        &&& context.board[0] == 0 && context.board[context.board.len() - 1] == 0
+        &&& self.squares[0] == 0 && self.squares[self.len() - 1] == 0
         // Snakes and ladders cannot chain together
-        &&& forall |i: int| #![trigger context.board[i]]
-                0 <= i < context.board.len() && context.board[i] != 0 ==>
-                    context.board[i + context.board[i]] == 0
+        &&& forall |i: int| #![trigger self.squares[i]]
+                0 <= i < self.len() && self.squares[i] != 0 ==>
+                    self.squares[i + self.squares[i]] == 0
         // Board is winnable: every square other than the winning square has another square at most
         // 6 squares ahead that will permit forward progress. This rules out any sequence of 6 or
         // more snake heads ahead of some position i where the tail of each snake lands before i.
         // Note that this is a stronger requirement than winnability, but it is much easier for Z3
         // to prove.
         &&& forall |i: int|
-                0 <= i < context.board.len() - 1 ==>
-                    #[trigger] context.has_forward_progress(i)
-    }
+                0 <= i < self.len() - 1 ==>
+                    #[trigger] self.has_forward_progress(i)
 
-    state {
-        player_positions: Seq<int>,
-        next_player: int,
-    }
-
-    lift_context: |context| abs::Context {
-        board_size: context.board.len(),
-        player_count: context.player_count,
-    }
-
-    lift: |state| abs::Abs {
-        player_positions: state.player_positions,
-        next_player: state.next_player,
-    }
-
-    init: |context| Board {
-        player_positions: Seq::new(context.player_count, |i| { 0 }),
-        next_player: 0,
-    }
-
-    invariant: |context, state| {
-        // Players can't sit at the top of a snake or the bottom of a ladder
-        &&& forall |player: int| #![trigger state.player_positions[player]]
-                0 <= player < state.player_positions.len() ==>
-                    context.board[state.player_positions[player]] == 0
-    }
-
-    refined event Turn(roll: DiceRoll) {
-        lift_in: |context, state| state.take_turn(context, roll)
-
-        guard: |context, state| {
-            // Game not over
-            &&& !state.lift().is_done(context.lift())
-        }
-
-        action: |context, state| {
-            let next_pos = state.take_turn(context, roll);
-            Board {
-                player_positions: state.lift().move_player(state.next_player, next_pos),
-                next_player: state.lift().advance_player(),
-            }
-        }
     }
 }
 
-}
-
-verus! {
-
-impl Context {
-    /// Determine whether there is some dice roll that makes forward progress from a given square.
-    pub open spec fn has_forward_progress(&self, pos: int) -> bool {
-        ||| Board::step(*self, pos, 1) > pos
-        ||| Board::step(*self, pos, 2) > pos
-        ||| Board::step(*self, pos, 3) > pos
-        ||| Board::step(*self, pos, 4) > pos
-        ||| Board::step(*self, pos, 5) > pos
-        ||| Board::step(*self, pos, 6) > pos
-    }
-}
-
-impl Board {
-    /// Calculate where the next player will land after the given roll.
-    pub open spec fn take_turn(self, context: Context, roll: DiceRoll) -> int {
-        let curr_pos = self.player_positions[self.next_player];
-        Self::step(context, curr_pos, roll.value())
-    }
-
-    /// Compute the square a player at the given position would land on after rolling a die
-    /// showing `n`, taking into account snakes and ladders.
-    pub open spec fn step(context: Context, curr_pos: int, n: nat) -> int {
-        let roll_pos = curr_pos + n;
-        if roll_pos >= context.board.len() {
-            context.board.len() - 1
-        } else {
-            roll_pos + context.board[roll_pos]
-        }
-    }
-
-    /// Determine if it is possible to win the game from the given position within a number of
-    /// steps given by `fuel`.
-    pub open spec fn can_win_from(context: Context, pos: int, fuel: nat) -> bool
-        decreases fuel
-    {
-        // Base case: `pos` *is* the winning square
-        ||| pos == context.board.len() - 1
-        // Induction: we can win from some square within a dice roll of `pos`
-        ||| (fuel > 0 && exists |n: nat| #![auto]
-                1 <= n <= 6
-             && Self::can_win_from(
-                    context, Self::step(context, pos, n), (fuel - 1) as nat))
-    }
-}
-
-// From any given square on the board, you can win in at most board size - 1 - i moves.
-// This follows from the requirement that every square permit forward progress for some dice roll.
-proof fn lemma_can_win_from(context: Context, i: int, fuel: nat)
+/// On a valid board, you can always win within the given number of rolls, as long as there are
+/// enough to cover each square between the starting position and the end of the board.
+proof fn lemma_valid_implies_winnable_within(board: Board, pos: int, rolls: nat)
     requires
-        context.valid(),
-        0 <= i < context.board.len(),
-        fuel + i >= context.board.len() - 1,
+        board.valid(),
+        0 <= pos < board.len(),
+        rolls + pos >= board.len() - 1,
     ensures
-        Board::can_win_from(context, i, fuel),
-    decreases context.board.len() - i,
+        board.can_win_from_within(pos, rolls),
+    decreases board.len() - pos,
 {
-    if i < context.board.len() - 1 {
-        // Bring the forward progress assertion into context
-        assert(context.has_forward_progress(i));
+    if pos < board.len() - 1 {
+        // Make sure Verus remembers that there is always some dice roll that makes progress
+        assert(board.has_forward_progress(pos));
         // Choose a specific dice roll with forward progress
-        let n = choose |n: nat| 1 <= n <= 6 && Board::step(context, i, n) > i;
+        let n = choose |n: nat| 1 <= n <= 6 && #[trigger] board.step(pos + n) > pos;
         // Recurse using that dice roll
-        lemma_can_win_from(context, Board::step(context, i, n), (fuel - 1) as nat);
+        lemma_valid_implies_winnable_within(board, board.step(pos + n), (rolls - 1) as nat);
     }
 }
 
-/// The game is winnable from the next player's current position. Since no assumption is
-/// made about state beyond validity and the invariant, every reachable state is winnable.
-proof fn proof_winnable(context: Context, state: Board)
+/// On a valid board, it is possible to win from any square.
+pub proof fn lemma_valid_implies_winnable(board: Board, pos: int)
     requires
-        context.valid(),
-        Board::invariant(context, state),
+        board.valid(),
+        0 <= pos < board.len(),
     ensures
-        Board::can_win_from(
-            context, state.player_positions[state.next_player], context.board.len()),
+        board.can_win_from(pos),
 {
-    lemma_can_win_from(
-        context, state.player_positions[state.next_player], context.board.len());
+    let max_rolls = (board.len() - pos - 1) as nat;
+    lemma_valid_implies_winnable_within(board, pos, max_rolls);
 }
 
 /// Just for demonstration, we construct a realistic snakes and ladders board cribbed from
 /// [wikipedia](https://en.wikipedia.org/wiki/Snakes_and_ladders#/media/File:Berrington_Hall_-_snakes_and_ladders_(13826426425).jpg)
 /// and show that Z3 can automatically prove that it is valid.
 proof fn proof_board_valid() {
-    let squares = seq![
-        0, 0, 0, 0, 0, 0, 0, 18, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        61, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 34, -22, 0, -41, 0, -39, 0, 41,
-        0, -41, 0, 39, -48, 0, 0, 0, -42, 0,
-        0, 34, 0, -28, 0, 21, 0, 0, -60, 0,
-        0, 0, -72, 0, 0, 0, 0, 0, 0, 20,
-        0, 0, -64, 0, 0, 0, 0, 0, 0, 0,
-        0, -41, 0, 0, -71, 0, 0, -70, 0, 0
-    ];
+    let board = Board {
+        squares: seq![
+            0, 0, 0, 0, 0, 0, 0, 18, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            61, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 34, -22, 0, -41, 0, -39, 0, 41,
+            0, -41, 0, 39, -48, 0, 0, 0, -42, 0,
+            0, 34, 0, -28, 0, 21, 0, 0, -60, 0,
+            0, 0, -72, 0, 0, 0, 0, 0, 0, 20,
+            0, 0, -64, 0, 0, 0, 0, 0, 0, 0,
+            0, -41, 0, 0, -71, 0, 0, -70, 0, 0
 
-    let context = Context {
-        board: squares,
-        player_count: 2,
+        ],
     };
 
-    assert(context.valid());
+    assert(board.valid());
 }
 
 }

@@ -1,3 +1,5 @@
+//! Here we define a simple [`DiceRoll`] helper that represents a valid roll of a single die.
+
 use vstd::prelude::*;
 
  verus! {

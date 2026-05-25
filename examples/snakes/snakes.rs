@@ -8,11 +8,11 @@ use event_v::machine;
 
 use crate::abs;
 use crate::dice::DiceRoll;
-use crate::board::{lemma_valid_implies_winnable, Board};
+use crate::board::Board;
 
 machine! {
 
-machine Snakes refines abs::Abs {
+machine Snakes refines abs::BoardGame {
     context: Board
 
     state {
@@ -23,7 +23,7 @@ machine Snakes refines abs::Abs {
         board_size: context.len(),
     }
 
-    lift: |state| abs::Abs {
+    lift: |state| abs::BoardGame {
         players: state.players,
     }
 
@@ -54,22 +54,6 @@ machine Snakes refines abs::Abs {
             }
         }
     }
-}
-
-}
-
-verus! {
-
-/// The game is winnable from the next player's current square. Since no assumption is
-/// made about state beyond validity and the invariant, every reachable state is winnable.
-proof fn proof_winnable(board: Board, state: Snakes)
-    requires
-        board.valid(),
-        Snakes::invariant(board, state),
-    ensures
-        board.can_win_from(state.players.0),
-{
-    lemma_valid_implies_winnable(board, state.players.0);
 }
 
 }

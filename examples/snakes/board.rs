@@ -158,7 +158,7 @@ proof fn lemma_valid_implies_winnable_within(board: Board, square: int, rolls: n
 }
 
 /// On a valid board, it is possible to win from any square.
-pub proof fn lemma_valid_implies_winnable(board: Board, square: int)
+pub proof fn proof_winnable(board: Board, square: int)
     requires
         board.valid(),
         board.in_bounds(square),

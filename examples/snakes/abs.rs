@@ -40,7 +40,7 @@ impl MachineContext for Context {
 
 machine! {
 
-machine Abs {
+machine BoardGame {
     context: Context
 
     state {
@@ -49,7 +49,7 @@ machine Abs {
         players: (int, int),
     }
 
-    init: |context| Abs {
+    init: |context| BoardGame {
         players: (0, 0),
     }
 
@@ -69,7 +69,7 @@ machine Abs {
             &&& context.in_bounds(new_square)
         }
 
-        action: |context, state| Abs {
+        action: |context, state| BoardGame {
             players: (state.players.1, new_square),
         }
     }
@@ -79,7 +79,7 @@ machine Abs {
 
 verus! {
 
-impl Abs {
+impl BoardGame {
     pub open spec fn is_done(&self, context: Context) -> bool {
         context.is_winner(self.players.0) || context.is_winner(self.players.1)
     }

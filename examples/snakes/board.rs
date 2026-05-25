@@ -17,7 +17,7 @@
 //! There are a few properties a Snakes and Ladders board must have in order to be valid:
 //! 1. It must have at least 2 squares (a start and an end), otherwise the game will end before
 //!    anyone can take a turn.
-//! 2. Snakes and Ladders can't send you off of the board.
+//! 2. Snakes and ladders can't send you off of the board.
 //! 3. The first square must not have a snake head or ladder base, otherwise the square it leads to
 //!    would effectively be the first square on the board. Similarly, the last square must not have
 //!    a snake or ladder, otherwise the game would not be winnable.
@@ -33,6 +33,7 @@
 use vstd::prelude::*;
 
 use event_v::machine::MachineContext;
+use crate::dice::DiceRoll;
 
 verus! {
 
@@ -50,49 +51,63 @@ impl Board {
         self.squares.len()
     }
 
-    /// Compute the square a player at the given position would land on after rolling a die
-    /// showing `n`, taking into account snakes and ladders.
-    pub open spec fn step(self, roll_pos: int) -> int {
-        if roll_pos >= self.len() {
+    /// Determine if the given square is on the board.
+    pub open spec fn in_bounds(self, square: int) -> bool {
+        0 <= square < self.len()
+    }
+
+    /// Determine if the given square is the final (winning) square.
+    pub open spec fn is_winner(self, square: int) -> bool {
+        square == self.len() - 1
+    }
+
+    /// Compute the resting square of a player currently at the given square after they roll the
+    /// given value from the die.
+    pub open spec fn roll(self, square: int, roll: DiceRoll) -> int {
+        self.follow(square + roll.value())
+    }
+
+    /// Compute the resting square of a player who landed on the given square after following any
+    /// snakes or ladders on that square.
+    pub open spec fn follow(self, roll_square: int) -> int {
+        if roll_square >= self.len() {
             self.len() - 1
         } else {
-            roll_pos + self.squares[roll_pos]
+            roll_square + self.squares[roll_square]
         }
     }
 
-    /// Determine whether a player can come to rest at the given board position. Returns false if
-    /// the given position is at the head of a snake or the bottom of a ladder.
-    pub open spec fn is_at_rest(self, pos: int) -> bool {
-        self.squares[pos] == 0
-    }
-
-    /// Determine if the winning square is reachable from the given board position.
-    pub open spec fn can_win_from(self, pos: int) -> bool {
-        exists |rolls: nat| self.can_win_from_within(pos, rolls)
-    }
-
-    /// Determine if the winning square is reachable from the given board position within the given
-    /// number of dice rolls.
-    pub open spec fn can_win_from_within(self, pos: int, rolls: nat) -> bool
-        decreases rolls
-    {
-        // Base case: `pos` is the winning square
-        ||| pos == self.len() - 1
-        // Induction: some dice roll lands on a square we can win from
-        ||| (rolls > 0 && exists |n: nat| #![trigger self.step(pos + n)] {
-            &&& 1 <= n <= 6
-            &&& self.can_win_from_within(self.step(pos + n), (rolls - 1) as nat)
-        })
+    /// Determine whether a player can come to rest at the given square. Returns false if the given
+    /// square is at the head of a snake or the bottom of a ladder.
+    pub open spec fn is_at_rest(self, square: int) -> bool {
+        self.squares[square] == 0
     }
 
     /// Determine whether there is some dice roll that makes forward progress from a given square.
-    pub open spec fn has_forward_progress(self, pos: int) -> bool {
-        ||| self.step(pos + 1) > pos
-        ||| self.step(pos + 2) > pos
-        ||| self.step(pos + 3) > pos
-        ||| self.step(pos + 4) > pos
-        ||| self.step(pos + 5) > pos
-        ||| self.step(pos + 6) > pos
+    pub open spec fn has_forward_progress(self, square: int) -> bool {
+        ||| self.roll(square, DiceRoll::One) > square
+        ||| self.roll(square, DiceRoll::Two) > square
+        ||| self.roll(square, DiceRoll::Three) > square
+        ||| self.roll(square, DiceRoll::Four) > square
+        ||| self.roll(square, DiceRoll::Five) > square
+        ||| self.roll(square, DiceRoll::Six) > square
+    }
+
+    /// Determine if the winning square is reachable from the given square.
+    pub open spec fn can_win_from(self, square: int) -> bool {
+        exists |rolls: nat| self.can_win_from_within(square, rolls)
+    }
+
+    /// Determine if the winning square is reachable from the given square within the given
+    /// number of dice rolls.
+    pub open spec fn can_win_from_within(self, square: int, rolls: nat) -> bool
+        decreases rolls
+    {
+        // Base case: `square` is the winning square
+        ||| self.is_winner(square)
+        // Induction: some dice roll lands on a square we can win from
+        ||| (rolls > 0 && exists |roll: DiceRoll| #![trigger self.roll(square, roll)]
+            self.can_win_from_within(self.roll(square, roll), (rolls - 1) as nat))
     }
 }
 
@@ -101,58 +116,57 @@ impl MachineContext for Board {
         // Board isn't degenerate (at least one turn to traverse)
         &&& self.len() > 1
         // Snakes and ladders can't take you off the board
-        &&& forall |i: int| #![trigger self.squares[i]]
-                0 <= i < self.len() ==>
-                    0 <= i + self.squares[i] < self.len()
+        &&& forall |square: int| #![trigger self.follow(square)]
+                self.in_bounds(square) ==>
+                    self.in_bounds(self.follow(square))
         // No snakes or ladders on first or last square
         &&& self.squares[0] == 0 && self.squares[self.len() - 1] == 0
         // Snakes and ladders cannot chain together
-        &&& forall |i: int| #![trigger self.squares[i]]
-                0 <= i < self.len() && self.squares[i] != 0 ==>
-                    self.squares[i + self.squares[i]] == 0
+        &&& forall |square: int| #![trigger self.squares[square]]
+                self.in_bounds(square) && !self.is_at_rest(square) ==>
+                    self.is_at_rest(self.follow(square))
         // Board is winnable: every square other than the winning square has another square at most
         // 6 squares ahead that will permit forward progress. This rules out any sequence of 6 or
-        // more snake heads ahead of some position i where the tail of each snake lands before i.
+        // more snake heads ahead of some square i where the tail of each snake lands before i.
         // Note that this is a stronger requirement than winnability, but it is much easier for Z3
         // to prove.
-        &&& forall |i: int|
-                0 <= i < self.len() - 1 ==>
-                    #[trigger] self.has_forward_progress(i)
-
+        &&& forall |square: int| #![trigger self.has_forward_progress(square)]
+                self.in_bounds(square) && !self.is_winner(square) ==>
+                    self.has_forward_progress(square)
     }
 }
 
 /// On a valid board, you can always win within the given number of rolls, as long as there are
-/// enough to cover each square between the starting position and the end of the board.
-proof fn lemma_valid_implies_winnable_within(board: Board, pos: int, rolls: nat)
+/// enough to cover each square between the start and end of the board.
+proof fn lemma_valid_implies_winnable_within(board: Board, square: int, rolls: nat)
     requires
         board.valid(),
-        0 <= pos < board.len(),
-        rolls + pos >= board.len() - 1,
+        board.in_bounds(square),
+        rolls + square >= board.len() - 1,
     ensures
-        board.can_win_from_within(pos, rolls),
-    decreases board.len() - pos,
+        board.can_win_from_within(square, rolls),
+    decreases board.len() - square,
 {
-    if pos < board.len() - 1 {
+    if !board.is_winner(square) {
         // Make sure Verus remembers that there is always some dice roll that makes progress
-        assert(board.has_forward_progress(pos));
+        assert(board.has_forward_progress(square));
         // Choose a specific dice roll with forward progress
-        let n = choose |n: nat| 1 <= n <= 6 && #[trigger] board.step(pos + n) > pos;
+        let roll = choose |roll: DiceRoll| board.roll(square, roll) > square;
         // Recurse using that dice roll
-        lemma_valid_implies_winnable_within(board, board.step(pos + n), (rolls - 1) as nat);
+        lemma_valid_implies_winnable_within(board, board.roll(square, roll), (rolls - 1) as nat);
     }
 }
 
 /// On a valid board, it is possible to win from any square.
-pub proof fn lemma_valid_implies_winnable(board: Board, pos: int)
+pub proof fn lemma_valid_implies_winnable(board: Board, square: int)
     requires
         board.valid(),
-        0 <= pos < board.len(),
+        board.in_bounds(square),
     ensures
-        board.can_win_from(pos),
+        board.can_win_from(square),
 {
-    let max_rolls = (board.len() - pos - 1) as nat;
-    lemma_valid_implies_winnable_within(board, pos, max_rolls);
+    let max_rolls = (board.len() - square - 1) as nat;
+    lemma_valid_implies_winnable_within(board, square, max_rolls);
 }
 
 /// Just for demonstration, we construct a realistic snakes and ladders board cribbed from

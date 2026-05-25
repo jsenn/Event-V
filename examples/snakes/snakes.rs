@@ -39,7 +39,7 @@ machine Snakes refines abs::Abs {
 
     refined event Turn(roll: DiceRoll) {
         lift_in: |board, state| {
-            board.step(state.players.0 + roll.value())
+            board.roll(state.players.0, roll)
         }
 
         guard: |board, state| {
@@ -48,9 +48,9 @@ machine Snakes refines abs::Abs {
         }
 
         action: |board, state| {
-            let next_pos = board.step(state.players.0 + roll.value());
+            let next_square = board.roll(state.players.0, roll);
             Snakes {
-                players: (state.players.1, next_pos),
+                players: (state.players.1, next_square),
             }
         }
     }
@@ -60,7 +60,7 @@ machine Snakes refines abs::Abs {
 
 verus! {
 
-/// The game is winnable from the next player's current position. Since no assumption is
+/// The game is winnable from the next player's current square. Since no assumption is
 /// made about state beyond validity and the invariant, every reachable state is winnable.
 proof fn proof_winnable(board: Board, state: Snakes)
     requires

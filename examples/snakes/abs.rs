@@ -5,22 +5,43 @@
 //! 2. Whose turn it is
 //! 3. Whether or not anyone has won the game yet.
 //! 
-//! The single event is `Turn`, which moves the next player to a given board position, and passes
-//! play to the next player.
+//! The single event is `Turn`, which moves the next player to a given square, and passes play to
+//! the next player.
 
 use vstd::prelude::*;
 
 use event_v::machine::*;
 use event_v::machine;
 
+verus! {
+
+pub struct Context {
+    pub board_size: nat,
+}
+
+impl Context {
+    pub open spec fn in_bounds(self, square: int) -> bool {
+        0 <= square < self.board_size
+    }
+
+    pub open spec fn is_winner(self, square: int) -> bool {
+        square == self.board_size - 1
+    }
+}
+
+impl MachineContext for Context {
+    open spec fn valid(&self) -> bool {
+        // A board with only 1 square would be unplayable as everyone would win immediately!
+        self.board_size > 1
+    }
+}
+
+}
+
 machine! {
 
 machine Abs {
-    context {
-        board_size: nat,
-    }
-
-    valid: |context| context.board_size > 1
+    context: Context
 
     state {
         // By convention, the next player is always the first in the pair. Each time play passes to
@@ -34,22 +55,22 @@ machine Abs {
 
     invariant: |context, state| {
         // All players on the board
-        &&& context.valid_position(state.players.0)
-        &&& context.valid_position(state.players.1)
+        &&& context.in_bounds(state.players.0)
+        &&& context.in_bounds(state.players.1)
         // At most one winner
         &&& !(context.is_winner(state.players.0) && context.is_winner(state.players.1))
     }
 
-    event Turn(move_to: int) {
+    event Turn(new_square: int) {
         guard: |context, state| {
             // Game not over
             &&& !state.is_done(context)
-            // Valid next position
-            &&& context.valid_position(move_to)
+            // Valid next square
+            &&& context.in_bounds(new_square)
         }
 
         action: |context, state| Abs {
-            players: (state.players.1, move_to),
+            players: (state.players.1, new_square),
         }
     }
 }
@@ -61,16 +82,6 @@ verus! {
 impl Abs {
     pub open spec fn is_done(&self, context: Context) -> bool {
         context.is_winner(self.players.0) || context.is_winner(self.players.1)
-    }
-}
-
-impl Context {
-    pub open spec fn valid_position(&self, pos: int) -> bool {
-        0 <= pos < self.board_size
-    }
-
-    pub open spec fn is_winner(&self, pos: int) -> bool {
-        pos == self.board_size - 1
     }
 }
 

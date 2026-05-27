@@ -1,3 +1,10 @@
+//! Here we define the most abstract model of the bridge controller. At this level, we ignore the
+//! bridge completely. The only thing we track is the total number of cars that are on *either* the
+//! bridge or the island.
+//! 
+//! We define two events: [`MainlandIn`], which represents a car entering the mainland from the
+//! bridge, and [`MainlandOut`], which represents a car leaving the mainland for the island.
+
 use vstd::prelude::*;
 
 use event_v::machine::*;

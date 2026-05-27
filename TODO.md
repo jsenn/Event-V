@@ -1,3 +1,6 @@
+# Documentation
+Need to surface documentation about refinements, how to define variants, detailed explanations of the different proof obligations, etc. etc.
+
 # Examples
 * Snakes animate
 * Snakes exec

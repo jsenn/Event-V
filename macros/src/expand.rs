@@ -68,7 +68,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         }
     }
 
-    // --- State struct ---
+    // Parse `state { fields... }`
     let field_defs: Vec<_> = decl
         .state_fields
         .iter()
@@ -79,12 +79,8 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         })
         .collect();
 
-    // --- validate method ---
-    // Abstract machines: validate = user invariant body
-    // Refined machines: validate = abstract_validate(lifted context) && user invariant body
-    //
-    // The context lift is `<Self as Lift<ConcreteContext, AbstractContext>>::lift` — written fully
-    // qualified because the machine carries two `Lift` impls (state and context).
+    // Helper to call the context object's `lift` function. Note that both the state and context
+    // implement `Lift`.
     let lifted_context = |context_ident: &Ident| -> TokenStream {
         match &decl.refines {
             Some(refines_path) => quote! {
@@ -139,7 +135,6 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         }
     };
 
-    // --- Machine impl (no longer contains init) ---
     let machine_impl = quote! {
         impl Machine for #name {
             type Context = #context_type;
@@ -150,7 +145,6 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         }
     };
 
-    // --- Init impl ---
     let init_context_sig = typed_param(&decl.init.context, &context_type);
     let init_body = &decl.init.body;
     let init_span = decl.init.context.name.span();
@@ -169,7 +163,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         }
     };
 
-    // --- Lift impls (refinements only): state lift + context lift, keyed on the machine ---
+    // State struct `Lift` impl
     let lift_impl = if let Some(ref refines_path) = decl.refines {
         let lift_decl = match &decl.lift {
             Some(l) => l,
@@ -237,7 +231,6 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         quote! {}
     };
 
-    // --- Refinement impl ---
     let refinement_impl = if let Some(ref refines_path) = decl.refines {
         let abstract_init = abstract_event_path(refines_path, &Ident::new("Initialize", name.span()));
         let has_concrete_event = decl.events.iter().any(|e| e.concrete);
@@ -319,13 +312,8 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         quote! {}
     };
 
-    // --- Event impls ---
     let event_impls: Vec<_> = decl.events.iter().map(|evt| expand_event(decl, evt)).collect();
 
-    // --- Deadlock freedom proof ---
-    // For events with non-() Input, witness the existential via `exists|x: T| guard(..., x)`.
-    // For () Input, call the guard directly (Verus's auto-witness of `()` in an existential
-    // is unreliable).
     let deadlock_proof = if let Some(dl_span) = decl.deadlock_free {
         if decl.events.is_empty() {
             Error::new(
@@ -457,7 +445,6 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         quote! {}
     };
 
-    // --- Inline context struct + MachineContext impl ---
     let context_struct_impl = match &decl.context {
         ContextDecl::Inline { fields, valid } => {
             let context_field_defs: Vec<_> = fields
@@ -501,7 +488,6 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
         ContextDecl::External(_) => quote! {},
     };
 
-    // --- Wrap everything in verus! ---
     quote! {
         verus! {
             #context_struct_impl
@@ -540,10 +526,6 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
     let action_state = typed_param(&evt.action.state, machine_name);
     let action_body = &evt.action.body;
 
-    // --- Input type and parameter tokens ---
-    // When the event has an input (e.g. `event Put(elem: nat)`), the user-chosen
-    // param name is used as the formal parameter so it's visible inside
-    // guard/action/output bodies.
     let (input_type, input_param) = if let Some(ref param) = evt.input {
         let ty = &param.ty;
         let name = &param.name;
@@ -559,14 +541,12 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
         quote! { _input: () }
     };
 
-    // --- Output type ---
     let output_type = if let Some(ref ty) = evt.output_type {
         quote! { #ty }
     } else {
         quote! { () }
     };
 
-    // --- Output function body ---
     let output_fn = if let Some(ref output) = evt.output {
         let out_context = typed_param(&output.context, &context_type);
         let out_state = typed_param(&output.state, machine_name);
@@ -577,7 +557,6 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
             }
         }
     } else {
-        // No user-provided output block — emit a trivial `()` output.
         quote! {
             open spec fn output(_context: #context_type, _state: #machine_name, _input: #input_type) -> () {
                 ()
@@ -623,7 +602,6 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
         if let Some(ref refines_path) = decl.refines {
             let abstract_event = abstract_event_path(refines_path, event_name);
 
-            // lift_in: map concrete input to abstract input.
             let lift_in_fn = if let Some(ref li) = evt.lift_in {
                 let li_context = typed_param(&li.context, &context_type);
                 let li_state = typed_param(&li.state, machine_name);
@@ -652,7 +630,6 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
                 }
             };
 
-            // lift_out: map concrete output to abstract output.
             let lift_out_fn = if let Some(ref lo) = evt.lift_out {
                 let lo_param = typed_param(&lo.param, &output_type);
                 let lo_body = &lo.body;

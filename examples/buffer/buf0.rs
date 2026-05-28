@@ -1,3 +1,10 @@
+//! The abstract buffer tracks only the current size of the buffer, and maintains the invariant
+//! that its size never exceed the configured max size.
+//!
+//! Note that the [`Put`] event doesn't yet take an input to put in the buffer, and the [`Fetch`]
+//! event doesn't produce any output. That is perfectly fine, and the next refinement will add
+//! inputs and outputs.
+
 use vstd::prelude::*;
 
 use event_v::machine::*;

@@ -410,6 +410,9 @@ pub trait MirrorEvent<M: Mirror<Spec>, Spec: Machine, SpecEv: Event<Spec>>
     /// Indicate whether or not the executable event is enabled. It must be enabled if and only if
     /// the spec guard is enabled on the lifted state.
     exec fn guard(state: &M, context: &M::ExecContext, input: &Self::Input) -> (b: bool)
+        requires
+            M::lift(*context).valid(),
+            Spec::invariant(M::lift(*context), M::lift(*state)),
         ensures
             b == SpecEv::guard(M::lift(*context), M::lift(*state), Self::lift_in(input));
 
@@ -417,6 +420,8 @@ pub trait MirrorEvent<M: Mirror<Spec>, Spec: Machine, SpecEv: Event<Spec>>
     /// must be equivalent to those of the spec mirror.
     exec fn action(state: &M, context: &M::ExecContext, input: &Self::Input) -> (out: (M, Self::Output))
         requires
+            M::lift(*context).valid(),
+            Spec::invariant(M::lift(*context), M::lift(*state)),
             SpecEv::guard(M::lift(*context), M::lift(*state), Self::lift_in(input)),
         ensures
             M::lift(out.0) == SpecEv::action(M::lift(*context), M::lift(*state), Self::lift_in(input)),

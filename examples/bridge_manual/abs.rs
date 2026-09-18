@@ -56,6 +56,13 @@ impl Event<State> for MainlandIn {
     open spec fn output(_context: BridgeContext, _state: State, _input: ()) -> () { () }
 
     proof fn proof_safety(context: BridgeContext, state: State, _input: ()) {}
+
+    open spec fn postcondition(
+        _context: BridgeContext, _before: State, _input: Self::Input,
+        _after: State, _result: Self::Output,
+    ) -> bool { true }
+
+    proof fn proof_ensures(_context: BridgeContext, _state: State, _input: Self::Input) {}
 }
 
 pub struct MainlandOut;
@@ -77,6 +84,13 @@ impl Event<State> for MainlandOut {
     open spec fn output(_context: BridgeContext, _state: State, _input: ()) -> () { () }
 
     proof fn proof_safety(context: BridgeContext, state: State, _input: ()) {}
+
+    open spec fn postcondition(
+        _context: BridgeContext, _before: State, _input: Self::Input,
+        _after: State, _result: Self::Output,
+    ) -> bool { true }
+
+    proof fn proof_ensures(_context: BridgeContext, _state: State, _input: Self::Input) {}
 }
 
 proof fn proof_deadlock_free(context: BridgeContext, state: State)

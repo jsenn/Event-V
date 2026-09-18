@@ -82,6 +82,13 @@ impl Event<State> for Put {
     open spec fn output(_context: buf0::Context, _state: State, _input: nat) -> () { () }
 
     proof fn proof_safety(context: buf0::Context, state: State, input: nat) {}
+
+    open spec fn postcondition(
+        _context: buf0::Context, _before: State, _input: Self::Input,
+        _after: State, _result: Self::Output,
+    ) -> bool { true }
+
+    proof fn proof_ensures(_context: buf0::Context, _state: State, _input: Self::Input) {}
 }
 
 impl RefinedEvent<State, buf0::Put> for Put {
@@ -111,6 +118,13 @@ impl Event<State> for PutLast {
     open spec fn output(_context: buf0::Context, _state: State, _input: nat) -> () { () }
 
     proof fn proof_safety(context: buf0::Context, state: State, input: nat) {}
+
+    open spec fn postcondition(
+        _context: buf0::Context, _before: State, _input: Self::Input,
+        _after: State, _result: Self::Output,
+    ) -> bool { true }
+
+    proof fn proof_ensures(_context: buf0::Context, _state: State, _input: Self::Input) {}
 }
 
 impl RefinedEvent<State, buf0::Put> for PutLast {
@@ -141,6 +155,13 @@ impl Event<State> for Fetch {
     }
 
     proof fn proof_safety(context: buf0::Context, state: State, _input: ()) {}
+
+    open spec fn postcondition(
+        _context: buf0::Context, _before: State, _input: Self::Input,
+        _after: State, _result: Self::Output,
+    ) -> bool { true }
+
+    proof fn proof_ensures(_context: buf0::Context, _state: State, _input: Self::Input) {}
 }
 
 impl RefinedEvent<State, buf0::Fetch> for Fetch {
@@ -171,6 +192,13 @@ impl Event<State> for GetSize {
     }
 
     proof fn proof_safety(_context: buf0::Context, _state: State, _input: ()) {}
+
+    open spec fn postcondition(
+        _context: buf0::Context, _before: State, _input: Self::Input,
+        _after: State, _result: Self::Output,
+    ) -> bool { true }
+
+    proof fn proof_ensures(_context: buf0::Context, _state: State, _input: Self::Input) {}
 }
 
 impl RefinedEvent<State, buf0::GetSize> for GetSize {

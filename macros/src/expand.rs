@@ -577,6 +577,54 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
         }
         None => (event_name.span(), quote! {}, quote! { _context: #context_type, _state: #machine_name, #input_param_unused }),
     };
+    let result_name = evt.output_name.clone()
+        .unwrap_or_else(|| Ident::new("_event_v_result", proc_macro2::Span::mixed_site()));
+    let postcondition_fn = if let Some(post) = &evt.ensures {
+        let context = typed_param(&post.context, &context_type);
+        let before = typed_param(&post.before, machine_name);
+        let after = typed_param(&post.after, machine_name);
+        let body = &post.body;
+        quote_spanned! { post.span =>
+            open spec fn postcondition(
+                #context, #before, #input_param, #after, #result_name: #output_type,
+            ) -> bool { #body }
+        }
+    } else {
+        quote! {
+            open spec fn postcondition(
+                _context: #context_type, _before: #machine_name, #input_param_unused,
+                _after: #machine_name, _result: #output_type,
+            ) -> bool { true }
+        }
+    };
+
+    let ensures_proof = if let Some(p) = &evt.ensures_proof {
+        let context = typed_param(&p.context, &context_type);
+        let before = typed_param(&p.before, machine_name);
+        let context_name = &p.context.name;
+        let before_name = &p.before.name;
+        let after = let_param(&p.after);
+        let input = evt.input.as_ref().map(|p| {
+            let name = &p.name;
+            quote! { #name }
+        }).unwrap_or_else(|| quote! { () });
+        let body = &p.body;
+        quote_spanned! { p.span =>
+            proof fn proof_ensures(#context, #before, #input_param) {
+                let #result_name = Self::output(#context_name, #before_name, #input);
+                let #after = Self::action(#context_name, #before_name, #input);
+                #body
+            }
+        }
+    } else {
+        let span = evt.ensures.as_ref().map_or(event_name.span(), |post| post.span);
+        quote_spanned! { span =>
+            proof fn proof_ensures(
+                _context: #context_type, _before: #machine_name, #input_param_unused,
+            ) {}
+        }
+    };
+
     let event_impl = quote_spanned! { safety_span =>
         impl Event<#machine_name> for #event_name {
             type Input = #input_type;
@@ -591,10 +639,13 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
             }
 
             #output_fn
+            #postcondition_fn
 
             proof fn proof_safety(#safety_params) {
                 #safety_body
             }
+
+            #ensures_proof
         }
     };
 

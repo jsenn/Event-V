@@ -124,6 +124,13 @@ impl Event<State> for MainlandIn {
     open spec fn output(_context: BridgeContext, _state: State, _input: ()) -> () { () }
 
     proof fn proof_safety(context: BridgeContext, state: State, _input: ()) {}
+
+    open spec fn postcondition(
+        _context: BridgeContext, _before: State, _input: Self::Input,
+        _after: State, _result: Self::Output,
+    ) -> bool { true }
+
+    proof fn proof_ensures(_context: BridgeContext, _state: State, _input: Self::Input) {}
 }
 
 impl RefinedEvent<State, ref1::MainlandIn> for MainlandIn {
@@ -160,6 +167,13 @@ impl Event<State> for MainlandOut {
     open spec fn output(_context: BridgeContext, _state: State, _input: ()) -> () { () }
 
     proof fn proof_safety(context: BridgeContext, state: State, _input: ()) {}
+
+    open spec fn postcondition(
+        _context: BridgeContext, _before: State, _input: Self::Input,
+        _after: State, _result: Self::Output,
+    ) -> bool { true }
+
+    proof fn proof_ensures(_context: BridgeContext, _state: State, _input: Self::Input) {}
 }
 
 impl RefinedEvent<State, ref1::MainlandOut> for MainlandOut {
@@ -190,6 +204,13 @@ impl Event<State> for IslandIn {
     open spec fn output(_context: BridgeContext, _state: State, _input: ()) -> () { () }
 
     proof fn proof_safety(context: BridgeContext, state: State, _input: ()) {}
+
+    open spec fn postcondition(
+        _context: BridgeContext, _before: State, _input: Self::Input,
+        _after: State, _result: Self::Output,
+    ) -> bool { true }
+
+    proof fn proof_ensures(_context: BridgeContext, _state: State, _input: Self::Input) {}
 }
 
 impl RefinedEvent<State, ref1::IslandIn> for IslandIn {
@@ -227,6 +248,13 @@ impl Event<State> for IslandOut {
     open spec fn output(_context: BridgeContext, _state: State, _input: ()) -> () { () }
 
     proof fn proof_safety(context: BridgeContext, state: State, _input: ()) {}
+
+    open spec fn postcondition(
+        _context: BridgeContext, _before: State, _input: Self::Input,
+        _after: State, _result: Self::Output,
+    ) -> bool { true }
+
+    proof fn proof_ensures(_context: BridgeContext, _state: State, _input: Self::Input) {}
 }
 
 impl RefinedEvent<State, ref1::IslandOut> for IslandOut {
@@ -261,6 +289,13 @@ impl Event<State> for TurnGreenMainland {
     open spec fn output(_context: BridgeContext, _state: State, _input: ()) -> () { () }
 
     proof fn proof_safety(context: BridgeContext, state: State, _input: ()) {}
+
+    open spec fn postcondition(
+        _context: BridgeContext, _before: State, _input: Self::Input,
+        _after: State, _result: Self::Output,
+    ) -> bool { true }
+
+    proof fn proof_ensures(_context: BridgeContext, _state: State, _input: Self::Input) {}
 }
 
 impl NewEvent<State> for TurnGreenMainland {
@@ -292,6 +327,13 @@ impl Event<State> for TurnGreenIsland {
     open spec fn output(_context: BridgeContext, _state: State, _input: ()) -> () { () }
 
     proof fn proof_safety(context: BridgeContext, state: State, _input: ()) {}
+
+    open spec fn postcondition(
+        _context: BridgeContext, _before: State, _input: Self::Input,
+        _after: State, _result: Self::Output,
+    ) -> bool { true }
+
+    proof fn proof_ensures(_context: BridgeContext, _state: State, _input: Self::Input) {}
 }
 
 impl NewEvent<State> for TurnGreenIsland {

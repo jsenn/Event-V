@@ -63,6 +63,13 @@ impl Event<State> for Put {
     open spec fn output(_context: Context, _state: State, _input: ()) -> () { () }
 
     proof fn proof_safety(context: Context, state: State, _input: ()) {}
+
+    open spec fn postcondition(
+        _context: Context, _before: State, _input: Self::Input,
+        _after: State, _result: Self::Output,
+    ) -> bool { true }
+
+    proof fn proof_ensures(_context: Context, _state: State, _input: Self::Input) {}
 }
 
 /// Fetch: remove an element (abstract: just decrement size).
@@ -82,6 +89,13 @@ impl Event<State> for Fetch {
     open spec fn output(_context: Context, _state: State, _input: ()) -> () { () }
 
     proof fn proof_safety(context: Context, state: State, _input: ()) {}
+
+    open spec fn postcondition(
+        _context: Context, _before: State, _input: Self::Input,
+        _after: State, _result: Self::Output,
+    ) -> bool { true }
+
+    proof fn proof_ensures(_context: Context, _state: State, _input: Self::Input) {}
 }
 
 /// GetSize: query the current size (no state change, output = size).
@@ -103,6 +117,13 @@ impl Event<State> for GetSize {
     }
 
     proof fn proof_safety(_context: Context, _state: State, _input: ()) {}
+
+    open spec fn postcondition(
+        _context: Context, _before: State, _input: Self::Input,
+        _after: State, _result: Self::Output,
+    ) -> bool { true }
+
+    proof fn proof_ensures(_context: Context, _state: State, _input: Self::Input) {}
 }
 
 proof fn proof_deadlock_free(context: Context, state: State)

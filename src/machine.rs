@@ -199,7 +199,13 @@ pub trait Init<M: Machine> {
 ///         state.value
 ///     }
 ///
+///     open spec fn postcondition(
+///         _context: CounterContext, _before: Counter, _input: nat,
+///         _after: Counter, _result: nat,
+///     ) -> bool { true }
+///
 ///     proof fn proof_safety(context: CounterContext, state: Counter, _input: nat) {}
+///     proof fn proof_ensures(context: CounterContext, state: Counter, _input: nat) {}
 /// }
 pub trait Event<M: Machine> {
     /// The type this event takes as input
@@ -226,6 +232,24 @@ pub trait Event<M: Machine> {
             Self::guard(context, state, input),
         ensures
             M::invariant(context, Self::action(context, state, input));
+
+    /// Relate the pre-state, input, post-state, and output of an enabled event.
+    spec fn postcondition(
+        context: M::Context, before: M, input: Self::Input, after: M, result: Self::Output,
+    ) -> bool;
+
+    /// Establish the contract for the state and output computed by this event.
+    proof fn proof_ensures(context: M::Context, before: M, input: Self::Input)
+        requires
+            context.valid(),
+            M::invariant(context, before),
+            Self::guard(context, before, input),
+        ensures
+            Self::postcondition(
+                context, before, input,
+                Self::action(context, before, input),
+                Self::output(context, before, input),
+            );
 }
 
 /// A `Refinement` maps a `Machine` to a second more abstract `Machine` to which it adds some
@@ -271,7 +295,7 @@ pub trait Refinement: Machine
             context.valid(),
             Self::invariant(context, state),
         ensures
-            <Self::Abstract as Machine>::invariant(Self::lift(context), Self::lift(state));
+            Self::Abstract::invariant(Self::lift(context), Self::lift(state));
 }
 
 /// A refinement that supplies a well-founded variant so that concrete events (those without an

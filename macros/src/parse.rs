@@ -31,6 +31,7 @@ mod kw {
     verus_syn::custom_keyword!(refined);
     verus_syn::custom_keyword!(concrete);
     verus_syn::custom_keyword!(proof_safety);
+    verus_syn::custom_keyword!(proof_ensures);
     verus_syn::custom_keyword!(proof_strengthening);
     verus_syn::custom_keyword!(proof_simulation);
     verus_syn::custom_keyword!(proof_convergent);
@@ -141,9 +142,12 @@ pub struct EventDecl {
     pub name: Ident,
     pub input: Option<EventParam>,
     pub output_type: Option<Type>,
+    pub output_name: Option<Ident>,
     pub guard: FnBody,
     pub action: FnBody,
     pub output: Option<FnBody>,
+    pub ensures: Option<PostconditionBody>,
+    pub ensures_proof: Option<PostconditionBody>,
     pub lift_in: Option<LiftInFn>,
     pub lift_out: Option<LiftFn>,
     pub safety_proof: Option<FnBody>,
@@ -157,6 +161,14 @@ pub struct FnBody {
     pub span: Span,
     pub context: ClosureParam,
     pub state: ClosureParam,
+    pub body: TokenStream,
+}
+
+pub struct PostconditionBody {
+    pub span: Span,
+    pub context: ClosureParam,
+    pub before: ClosureParam,
+    pub after: ClosureParam,
     pub body: TokenStream,
 }
 
@@ -280,6 +292,24 @@ fn eat_comma(input: ParseStream) -> Result<()> {
     Ok(())
 }
 
+fn postcondition_body(closure: ExprClosure, what: &str, span: Span) -> Result<PostconditionBody> {
+    reject_output(&closure, what)?;
+    let params = closure_params(&closure)?;
+    let [context, before, after]: [ClosureParam; 3] = params.try_into().map_err(|_| {
+        Error::new_spanned(
+            &closure.or1_token,
+            format!("the `{what}` closure expects three parameters, like `|context, before, after|`"),
+        )
+    })?;
+    Ok(PostconditionBody {
+        span,
+        context,
+        before,
+        after,
+        body: body_tokens(&closure.body),
+    })
+}
+
 fn parse_event(content: ParseStream) -> Result<EventDecl> {
     let mut refined = false;
     let mut concrete = false;
@@ -315,12 +345,21 @@ fn parse_event(content: ParseStream) -> Result<EventDecl> {
         None
     };
 
-    // Parse optional output type: -> Type
-    let output_type = if content.peek(Token![->]) {
-        content.parse::<Token![->]>()?;
-        Some(content.parse::<Type>()?)
-    } else {
-        None
+    let (output_type, output_name) = match content.parse::<ReturnType>()? {
+        ReturnType::Default => (None, None),
+        ReturnType::Type(_, tracked, binding, ty) => {
+            if let Some(tracked) = tracked {
+                return Err(Error::new_spanned(tracked, "event outputs cannot be tracked"));
+            }
+            let name = match binding.map(|binding| binding.1) {
+                None => None,
+                Some(Pat::Ident(p)) if p.by_ref.is_none() && p.mutability.is_none() && p.subpat.is_none() => {
+                    Some(p.ident)
+                }
+                Some(pat) => return Err(Error::new_spanned(pat, "event output must be a plain identifier")),
+            };
+            (Some(*ty), name)
+        }
     };
 
     let event_content;
@@ -329,6 +368,8 @@ fn parse_event(content: ParseStream) -> Result<EventDecl> {
     let mut guard = None;
     let mut action = None;
     let mut output = None;
+    let mut ensures = None;
+    let mut ensures_proof = None;
     let mut lift_in = None;
     let mut lift_out = None;
     let mut safety_proof = None;
@@ -350,6 +391,24 @@ fn parse_event(content: ParseStream) -> Result<EventDecl> {
             let kw = event_content.parse::<kw::output>()?;
             event_content.parse::<Token![:]>()?;
             output = Some(fn_body(event_content.parse()?, "output", kw.span)?);
+        } else if event_content.peek(Token![ensures]) {
+            let kw = event_content.parse::<Token![ensures]>()?;
+            if ensures.is_some() {
+                return Err(Error::new_spanned(kw, "duplicate 'ensures' clause"));
+            }
+            event_content.parse::<Token![:]>()?;
+            ensures = Some(postcondition_body(
+                event_content.parse()?, "ensures", kw.span,
+            )?);
+        } else if event_content.peek(kw::proof_ensures) {
+            let kw = event_content.parse::<kw::proof_ensures>()?;
+            if ensures_proof.is_some() {
+                return Err(Error::new(kw.span, "duplicate 'proof_ensures' block"));
+            }
+            event_content.parse::<Token![:]>()?;
+            ensures_proof = Some(postcondition_body(
+                event_content.parse()?, "proof_ensures", kw.span,
+            )?);
         } else if event_content.peek(kw::lift_in) {
             event_content.parse::<kw::lift_in>()?;
             event_content.parse::<Token![:]>()?;
@@ -390,22 +449,45 @@ fn parse_event(content: ParseStream) -> Result<EventDecl> {
                 Some(fn_body(event_content.parse()?, "proof_stuttering", kw.span)?);
         } else {
             return Err(event_content.error(
-                "expected 'guard', 'action', 'output', 'lift_in', 'lift_out', or a proof block",
+                "expected 'guard', 'action', 'output', 'ensures', 'lift_in', 'lift_out', or a proof block",
             ));
         }
         eat_comma(&event_content)?;
     }
 
+    if let Some(result) = &output_name {
+        if input.as_ref().is_some_and(|input| input.name == *result) {
+            return Err(Error::new(result.span(), "event input and output must have different names"));
+        }
+        for clause in [&ensures, &ensures_proof].into_iter().flatten() {
+            for param in [&clause.context, &clause.before, &clause.after] {
+                if param.name == *result {
+                    return Err(Error::new(param.name.span(), "contract parameter shadows the named event output"));
+                }
+            }
+        }
+    }
+
     let name_span = name.span();
+    if ensures.is_none() {
+        if let Some(proof) = &ensures_proof {
+            return Err(Error::new(
+                proof.span, "'proof_ensures' requires an 'ensures' clause",
+            ));
+        }
+    }
     Ok(EventDecl {
         refined,
         concrete,
         name,
         input,
         output_type,
+        output_name,
         guard: guard.ok_or_else(|| Error::new(name_span, "event missing 'guard'"))?,
         action: action.ok_or_else(|| Error::new(name_span, "event missing 'action'"))?,
         output,
+        ensures,
+        ensures_proof,
         lift_in,
         lift_out,
         safety_proof,

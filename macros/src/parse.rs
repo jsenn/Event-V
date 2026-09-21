@@ -28,8 +28,6 @@ mod kw {
     verus_syn::custom_keyword!(output);
     verus_syn::custom_keyword!(lift_in);
     verus_syn::custom_keyword!(lift_out);
-    verus_syn::custom_keyword!(refined);
-    verus_syn::custom_keyword!(concrete);
     verus_syn::custom_keyword!(proof_safety);
     verus_syn::custom_keyword!(proof_ensures);
     verus_syn::custom_keyword!(proof_strengthening);
@@ -137,8 +135,7 @@ pub struct LiftInFn {
 }
 
 pub struct EventDecl {
-    pub refined: bool,
-    pub concrete: bool,
+    pub refines: Option<Path>,
     pub name: Ident,
     pub input: Option<EventParam>,
     pub output_type: Option<Type>,
@@ -311,22 +308,6 @@ fn postcondition_body(closure: ExprClosure, what: &str, span: Span) -> Result<Po
 }
 
 fn parse_event(content: ParseStream) -> Result<EventDecl> {
-    let mut refined = false;
-    let mut concrete = false;
-
-    // Parse optional modifiers before 'event'
-    while !content.peek(kw::event) {
-        if content.peek(kw::refined) {
-            content.parse::<kw::refined>()?;
-            refined = true;
-        } else if content.peek(kw::concrete) {
-            content.parse::<kw::concrete>()?;
-            concrete = true;
-        } else {
-            return Err(content.error("expected 'event', 'refined', or 'concrete'"));
-        }
-    }
-
     content.parse::<kw::event>()?;
     let name: Ident = content.parse()?;
 
@@ -360,6 +341,13 @@ fn parse_event(content: ParseStream) -> Result<EventDecl> {
             };
             (Some(*ty), name)
         }
+    };
+
+    let refines = if content.peek(kw::refines) {
+        content.parse::<kw::refines>()?;
+        Some(content.parse::<Path>()?)
+    } else {
+        None
     };
 
     let event_content;
@@ -477,8 +465,7 @@ fn parse_event(content: ParseStream) -> Result<EventDecl> {
         }
     }
     Ok(EventDecl {
-        refined,
-        concrete,
+        refines,
         name,
         input,
         output_type,
@@ -662,10 +649,7 @@ impl Parse for MachineDecl {
                     ret_type,
                     body,
                 });
-            } else if content.peek(kw::event)
-                || content.peek(kw::refined)
-                || content.peek(kw::concrete)
-            {
+            } else if content.peek(kw::event) {
                 events.push(parse_event(&content)?);
             } else {
                 return Err(content.error(

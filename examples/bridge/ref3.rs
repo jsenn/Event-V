@@ -222,7 +222,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     // Update the controller when sensors indicate a car has entered the mainland from the bridge.
-    refined event MainlandIn {
+    event MainlandIn refines ref2::MainlandIn {
         guard: |context, state| {
             &&& state.con.flag_entered_mainland.is_set()
             &&& state.con.cars_to_mainland > 0
@@ -239,7 +239,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
 
     // Update the controller when sensors indicate that a car has entered the bridge from the
     // mainland.
-    refined event MainlandOut {
+    event MainlandOut refines ref2::MainlandOut {
         guard: |context, state| {
             &&& state.con.flag_left_mainland.is_set()
             &&& state.con.total_cars() + 1 <= context.max_cars
@@ -262,7 +262,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
 
     // Update the controller when sensors indicate that a car has entered the island from the
     // bridge.
-    refined event IslandIn {
+    event IslandIn refines ref2::IslandIn {
         guard: |context, state| {
             &&& state.con.flag_entered_island.is_set()
             &&& state.con.cars_to_island > 0
@@ -280,7 +280,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
 
     // Update the controller when sensors indicate that a car has entered the bridge from the
     // island.
-    refined event IslandOut {
+    event IslandOut refines ref2::IslandOut {
         guard: |context, state| {
             &&& state.con.flag_left_island.is_set()
             &&& state.con.cars_on_island > 0
@@ -302,7 +302,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
         }
     }
 
-    refined event TurnGreenMainland {
+    event TurnGreenMainland refines ref2::TurnGreenMainland {
         guard: |context, state| {
             &&& state.con.light_mainland.is_red()
             &&& state.con.car_left_island
@@ -321,7 +321,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
         }
     }
 
-    refined event TurnGreenIsland {
+    event TurnGreenIsland refines ref2::TurnGreenIsland {
         guard: |context, state| {
             &&& state.con.light_island.is_red()
             &&& state.con.car_left_mainland
@@ -341,7 +341,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     // Car arrives at the mainland->bridge pressure sensor
-    concrete event SensorMainlandOutArrive {
+    event SensorMainlandOutArrive {
         guard: |context, state| {
             &&& state.env.sensor_mainland_out.is_off()
             &&& state.con.flag_left_mainland.is_clear()
@@ -356,7 +356,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     // Car arrives at the bridge->mainland pressure sensor
-    concrete event SensorMainlandInArrive {
+    event SensorMainlandInArrive {
         guard: |context, state| {
             &&& state.env.sensor_mainland_in.is_off()
             &&& state.con.flag_entered_mainland.is_clear()
@@ -372,7 +372,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     // Car arrives at the island->bridge pressure sensor
-    concrete event SensorIslandOutArrive {
+    event SensorIslandOutArrive {
         guard: |context, state| {
             &&& state.env.cars_on_island > 0
             &&& state.env.sensor_island_out.is_off()
@@ -388,7 +388,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     // Car arrives at the bridge->island pressure sensor
-    concrete event SensorIslandInArrive {
+    event SensorIslandInArrive {
         guard: |context, state| {
             &&& state.env.cars_to_island > 0
             &&& state.env.sensor_island_in.is_off()
@@ -404,7 +404,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     // Car leaves mainland->bridge pressure sensor
-    concrete event SensorMainlandOutDepart {
+    event SensorMainlandOutDepart {
         guard: |context, state| {
             &&& state.env.sensor_mainland_out.is_on()
             &&& state.con.light_mainland.is_green()
@@ -424,7 +424,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     // Car leaves bridge->mainland pressure sensor
-    concrete event SensorMainlandInDepart {
+    event SensorMainlandInDepart {
         guard: |context, state| state.env.sensor_mainland_in.is_on()
         action: |context, state| Ref3 {
             con: Controller {
@@ -441,7 +441,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     // Car leaves island->bridge pressure sensor
-    concrete event SensorIslandOutDepart {
+    event SensorIslandOutDepart {
         guard: |context, state| {
             &&& state.env.sensor_island_out.is_on()
             &&& state.con.light_island.is_green()
@@ -462,7 +462,7 @@ deadlock_free machine Ref3 refines ref2::Ref2 {
     }
 
     // Car leaves bridge->island pressure sensor
-    concrete event SensorIslandInDepart {
+    event SensorIslandInDepart {
         guard: |context, state| state.env.sensor_island_in.is_on()
         action: |context, state| Ref3 {
             con: Controller {

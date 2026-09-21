@@ -4,8 +4,7 @@ use verus_syn::{Error, Ident, Path, PathArguments};
 
 use crate::parse::*;
 
-/// Given a refines path like `abs::Abs`, replace the last segment with `event_name`
-/// to produce `abs::MainlandIn` etc.
+/// Resolve the abstract initialization event alongside the abstract machine.
 fn abstract_event_path(refines_path: &Path, event_name: &Ident) -> TokenStream {
     let mut path = refines_path.clone();
     if let Some(last) = path.segments.last_mut() {
@@ -36,15 +35,6 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
     let context_type = decl.context.spec_type();
 
     if decl.refines.is_none() {
-        if let Some(evt) = decl.events.iter().find(|e| e.concrete) {
-            return Error::new(
-                evt.name.span(),
-                "'concrete' events may only appear in a machine that 'refines' another \
-                 (a concrete event is one introduced by a refinement that has no abstract counterpart); \
-                 either remove 'concrete' or add 'refines <abstract>' to the machine header",
-            )
-            .to_compile_error();
-        }
         if let Some(lc) = &decl.lift_context {
             return Error::new(
                 lc.context.name.span(),
@@ -233,8 +223,8 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
 
     let refinement_impl = if let Some(ref refines_path) = decl.refines {
         let abstract_init = abstract_event_path(refines_path, &Ident::new("Initialize", name.span()));
-        let has_concrete_event = decl.events.iter().any(|e| e.concrete);
-        let convergent_impl = match (&decl.variant, has_concrete_event) {
+        let has_new_event = decl.events.iter().any(|e| e.refines.is_none());
+        let convergent_impl = match (&decl.variant, has_new_event) {
             (Some(v), _) => {
                 let v_context_sig = typed_param(&v.context, quote! { Self::Context });
                 let v_state_sig = typed_param(&v.state, quote! { Self });
@@ -253,7 +243,7 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             (None, true) => {
                 let err = Error::new(
                     name.span(),
-                    "machine with 'concrete' events must declare a machine-level 'variant: |context, state| -> Type { ... }' block",
+                    "refining machine with events without 'refines' must declare a machine-level 'variant: |context, state| -> Type { ... }' block",
                 );
                 return err.to_compile_error();
             }
@@ -649,9 +639,8 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
         }
     };
 
-    let refined_impl = if evt.refined {
+    let refined_impl = if let Some(abstract_event) = &evt.refines {
         if let Some(ref refines_path) = decl.refines {
-            let abstract_event = abstract_event_path(refines_path, event_name);
 
             let lift_in_fn = if let Some(ref li) = evt.lift_in {
                 let li_context = typed_param(&li.context, &context_type);
@@ -735,13 +724,13 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
                 }
             }
         } else {
-            quote! { compile_error!("'refined' event used but machine does not 'refines' anything"); }
+            quote! { compile_error!("event 'refines' requires a machine that 'refines' another"); }
         }
     } else {
         quote! {}
     };
 
-    let new_impl = if evt.concrete {
+    let new_impl = if decl.refines.is_some() && evt.refines.is_none() {
         let (stut_span, stut_body, stut_params) = match &evt.stuttering_proof {
             Some(p) => {
                 let ctx = typed_param(&p.context, &context_type);

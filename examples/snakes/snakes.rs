@@ -37,7 +37,7 @@ machine Snakes refines abs::BoardGame {
         &&& board.is_at_rest(state.players.1)
     }
 
-    refined event Turn(roll: DiceRoll) {
+    event Turn(roll: DiceRoll) refines abs::Turn {
         lift_in: |board, state| {
             board.roll(state.players.0, roll)
         }

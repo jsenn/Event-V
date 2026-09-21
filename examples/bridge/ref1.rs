@@ -45,7 +45,7 @@ deadlock_free machine Ref1 refines abs::Abs {
         (state.cars_to_island, state.cars_on_island)
     }
 
-    refined event MainlandIn {
+    event MainlandIn refines abs::MainlandIn {
         guard: |context, state| state.cars_to_mainland > 0
         action: |context, state| Ref1 {
             cars_to_mainland: (state.cars_to_mainland - 1) as nat,
@@ -53,7 +53,7 @@ deadlock_free machine Ref1 refines abs::Abs {
         }
     }
 
-    refined event MainlandOut {
+    event MainlandOut refines abs::MainlandOut {
         guard: |context, state| {
             &&& state.cars_to_mainland == 0 // one-way
             &&& state.total_cars() < context.max_cars // capacity
@@ -64,7 +64,7 @@ deadlock_free machine Ref1 refines abs::Abs {
         }
     }
 
-    concrete event IslandIn {
+    event IslandIn {
         guard: |context, state| state.cars_to_island > 0
         action: |context, state| Ref1 {
             cars_to_island: (state.cars_to_island - 1) as nat,
@@ -73,7 +73,7 @@ deadlock_free machine Ref1 refines abs::Abs {
         }
     }
 
-    concrete event IslandOut {
+    event IslandOut {
         guard: |context, state| {
             &&& state.cars_on_island > 0
             &&& state.cars_to_island == 0 // one-way

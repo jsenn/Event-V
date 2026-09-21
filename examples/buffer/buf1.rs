@@ -26,14 +26,14 @@ machine Buf1 refines buf0::Buf0 {
     lift: |state| buf0::Buf0 { size: state.data.len() }
 
     // Append the given element to the end of the buffer.
-    refined event Put(elem: nat) {
+    event Put(elem: nat) refines buf0::Put {
         guard: |context, state| state.data.len() < context.max_size
         action: |context, state| Buf1 { data: seq![elem].add(state.data) }
         lift_in: |_context, _state| ()
     }
 
     // Remove and return the buffer's first element.
-    refined event Fetch -> nat {
+    event Fetch -> nat refines buf0::Fetch {
         guard: |context, state| state.data.len() > 0
         action: |context, state| Buf1 {
             data: state.data.subrange(1, state.data.len() as int),
@@ -42,7 +42,7 @@ machine Buf1 refines buf0::Buf0 {
         lift_out: |_n| ()
     }
 
-    refined event GetSize -> nat {
+    event GetSize -> nat refines buf0::GetSize {
         guard: |context, state| true
         action: |context, state| state
         output: |context, state| state.data.len()

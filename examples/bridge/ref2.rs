@@ -75,7 +75,7 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
         (state.car_left_island, state.car_left_mainland)
     }
 
-    refined event MainlandIn {
+    event MainlandIn refines ref1::MainlandIn {
         guard: |context, state| state.cars_to_mainland > 0
         action: |context, state| Ref2 {
             cars_to_mainland: (state.cars_to_mainland - 1) as nat,
@@ -83,7 +83,7 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
         }
     }
 
-    refined event MainlandOut {
+    event MainlandOut refines ref1::MainlandOut {
         guard: |context, state| state.light_mainland.is_green()
         action: |context, state| Ref2 {
             cars_to_island: state.cars_to_island + 1,
@@ -99,7 +99,7 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
         }
     }
 
-    refined event IslandIn {
+    event IslandIn refines ref1::IslandIn {
         guard: |context, state| state.cars_to_island > 0
         action: |context, state| Ref2 {
             cars_to_island: (state.cars_to_island - 1) as nat,
@@ -108,7 +108,7 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
         }
     }
 
-    refined event IslandOut {
+    event IslandOut refines ref1::IslandOut {
         guard: |context, state| state.light_island.is_green()
         action: |context, state| Ref2 {
             cars_on_island: (state.cars_on_island - 1) as nat,
@@ -125,7 +125,7 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
         }
     }
 
-    concrete event TurnGreenMainland {
+    event TurnGreenMainland {
         guard: |context, state| {
             &&& state.light_mainland.is_red()
             &&& state.car_left_island
@@ -140,7 +140,7 @@ deadlock_free machine Ref2 refines ref1::Ref1 {
         }
     }
 
-    concrete event TurnGreenIsland {
+    event TurnGreenIsland {
         guard: |context, state| {
             &&& state.light_island.is_red()
             &&& state.car_left_mainland

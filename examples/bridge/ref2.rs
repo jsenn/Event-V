@@ -17,7 +17,7 @@ use event_v::machine;
 
 machine! {
 
-deadlock_free machine Ref2 refines ref1::Ref1 {
+convergent deadlock_free machine Ref2 refines ref1::Ref1 {
     context: abs::Context,
 
     state {

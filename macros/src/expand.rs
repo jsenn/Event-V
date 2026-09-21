@@ -223,9 +223,8 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
 
     let refinement_impl = if let Some(ref refines_path) = decl.refines {
         let abstract_init = abstract_event_path(refines_path, &Ident::new("Initialize", name.span()));
-        let has_new_event = decl.events.iter().any(|e| e.refines.is_none());
-        let convergent_impl = match (&decl.variant, has_new_event) {
-            (Some(v), _) => {
+        let convergent_impl = match (&decl.variant, &decl.convergent) {
+            (Some(v), Some(_)) => {
                 let v_context_sig = typed_param(&v.context, quote! { Self::Context });
                 let v_state_sig = typed_param(&v.state, quote! { Self });
                 let v_ty = &v.ret_type;
@@ -240,14 +239,21 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
                     }
                 }
             }
-            (None, true) => {
+            (None, Some(_)) => {
                 let err = Error::new(
                     name.span(),
-                    "refining machine with events without 'refines' must declare a machine-level 'variant: |context, state| -> Type { ... }' block",
+                    "convergent machine must declare a machine-level 'variant: |context, state| -> Type { ... }' block",
                 );
                 return err.to_compile_error();
             }
-            (None, false) => quote! {},
+            (Some(_), None) => {
+                let err = Error::new(
+                    name.span(),
+                    "unexpected 'variant' block in machine not marked 'convergent'",
+                );
+                return err.to_compile_error();
+            }
+            (None, None) => quote! {},
         };
 
         let proof_lift_context_valid_fn = match &decl.proof_lift_context_valid {
@@ -299,6 +305,14 @@ pub fn expand_spec(decl: &MachineDecl) -> TokenStream {
             }
         }
     } else {
+        if decl.convergent.is_some() {
+            let err = Error::new(
+                name.span(),
+                "Machines with no 'refines' may not be marked 'convergent'",
+            );
+            return err.to_compile_error();
+        }
+
         quote! {}
     };
 
@@ -739,6 +753,21 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
             }
             None => (event_name.span(), quote! {}, quote! { _context: #context_type, _state: #machine_name, #input_param_unused }),
         };
+        let stut_method = quote_spanned! { stut_span =>
+            proof fn proof_stuttering(#stut_params) {
+                #stut_body
+            }
+        };
+        quote! {
+            impl NewEvent<#machine_name> for #event_name {
+                #stut_method
+            }
+        }
+    } else {
+        quote! {}
+    };
+
+    let conv_new_impl = if decl.convergent.is_some() && decl.refines.is_some() && evt.refines.is_none() {
         let (conv_span, conv_body, conv_params) = match &evt.convergence_proof {
             Some(p) => {
                 let ctx = typed_param(&p.context, &context_type);
@@ -752,15 +781,9 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
                 #conv_body
             }
         };
-        let stut_method = quote_spanned! { stut_span =>
-            proof fn proof_stuttering(#stut_params) {
-                #stut_body
-            }
-        };
         quote! {
-            impl NewEvent<#machine_name> for #event_name {
+            impl ConvergentNewEvent<#machine_name> for #event_name {
                 #conv_method
-                #stut_method
             }
         }
     } else {
@@ -772,5 +795,6 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
         #event_impl
         #refined_impl
         #new_impl
+        #conv_new_impl
     }
 }

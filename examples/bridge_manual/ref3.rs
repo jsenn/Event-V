@@ -497,8 +497,11 @@ impl Event<State> for SensorMainlandOutArrive {
 }
 
 impl NewEvent<State> for SensorMainlandOutArrive {
-    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
     proof fn proof_stuttering(context: BridgeContext, state: State, _input: ()) {}
+}
+
+impl ConvergentNewEvent<State> for SensorMainlandOutArrive {
+    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
 }
 
 pub struct SensorMainlandInArrive;
@@ -535,8 +538,11 @@ impl Event<State> for SensorMainlandInArrive {
 }
 
 impl NewEvent<State> for SensorMainlandInArrive {
-    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
     proof fn proof_stuttering(context: BridgeContext, state: State, _input: ()) {}
+}
+
+impl ConvergentNewEvent<State> for SensorMainlandInArrive {
+    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
 }
 
 pub struct SensorIslandOutArrive;
@@ -573,8 +579,11 @@ impl Event<State> for SensorIslandOutArrive {
 }
 
 impl NewEvent<State> for SensorIslandOutArrive {
-    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
     proof fn proof_stuttering(context: BridgeContext, state: State, _input: ()) {}
+}
+
+impl ConvergentNewEvent<State> for SensorIslandOutArrive {
+    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
 }
 
 pub struct SensorIslandInArrive;
@@ -611,8 +620,11 @@ impl Event<State> for SensorIslandInArrive {
 }
 
 impl NewEvent<State> for SensorIslandInArrive {
-    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
     proof fn proof_stuttering(context: BridgeContext, state: State, _input: ()) {}
+}
+
+impl ConvergentNewEvent<State> for SensorIslandInArrive {
+    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
 }
 
 pub struct SensorMainlandOutDepart;
@@ -653,8 +665,11 @@ impl Event<State> for SensorMainlandOutDepart {
 }
 
 impl NewEvent<State> for SensorMainlandOutDepart {
-    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
     proof fn proof_stuttering(context: BridgeContext, state: State, _input: ()) {}
+}
+
+impl ConvergentNewEvent<State> for SensorMainlandOutDepart {
+    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
 }
 
 pub struct SensorMainlandInDepart;
@@ -694,8 +709,11 @@ impl Event<State> for SensorMainlandInDepart {
 }
 
 impl NewEvent<State> for SensorMainlandInDepart {
-    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
     proof fn proof_stuttering(context: BridgeContext, state: State, _input: ()) {}
+}
+
+impl ConvergentNewEvent<State> for SensorMainlandInDepart {
+    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
 }
 
 pub struct SensorIslandOutDepart;
@@ -737,8 +755,11 @@ impl Event<State> for SensorIslandOutDepart {
 }
 
 impl NewEvent<State> for SensorIslandOutDepart {
-    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
     proof fn proof_stuttering(context: BridgeContext, state: State, _input: ()) {}
+}
+
+impl ConvergentNewEvent<State> for SensorIslandOutDepart {
+    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
 }
 
 pub struct SensorIslandInDepart;
@@ -779,8 +800,11 @@ impl Event<State> for SensorIslandInDepart {
 }
 
 impl NewEvent<State> for SensorIslandInDepart {
-    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
     proof fn proof_stuttering(context: BridgeContext, state: State, _input: ()) {}
+}
+
+impl ConvergentNewEvent<State> for SensorIslandInDepart {
+    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
 }
 
 proof fn proof_deadlock_free(context: BridgeContext, state: State)

@@ -264,17 +264,6 @@ pub trait Event<M: Machine> {
 /// 1. That the `lift_context` function maps a valid concrete context onto a valid abstract one; and
 /// 2. That `lift`ing a valid concrete state into an abstract state preserves the abstract
 ///    machine's invariant.
-/// 
-/// A concrete machine may also include new events that do not have an abstract counterpart. This
-/// is only safe if the refinement can prove that the abstract machine will eventually be allowed
-/// to make progress--otherwise a concrete machine could deadlock its abstract equivalent. To do
-/// this, the refinement must provide a **Variant** type and a function variant(). Variant must be
-/// **well-founded**. That is, there must be a finite number of instances of Variant less than any
-/// given instance.
-/// 
-/// Then, each [`NewEvent`] provides a proof that it decreases the global variant. Due to the well-
-/// foundedness property, the variant acts as a finite amount of "fuel" that the concrete machine
-/// can run on before an abstract event must take place, preventing deadlock.
 pub trait Refinement: Machine
     + Lift<Self, Self::Abstract>
     + Lift<Self::Context, <Self::Abstract as Machine>::Context>
@@ -299,8 +288,7 @@ pub trait Refinement: Machine
 }
 
 /// A refinement that supplies a well-founded variant so that concrete events (those without an
-/// abstract counterpart) can be proven to converge. Implement this in addition to [`Refinement`]
-/// whenever the refinement introduces [`NewEvent`]s.
+/// abstract counterpart) can be proven to converge.
 pub trait ConvergentRefinement: Refinement {
     /// The variant type for this refinement. This must be a type that is well-ordered and
     /// well-founded. In other words, every Variant instance must be comparable with every
@@ -371,11 +359,24 @@ pub trait RefinedEvent<M: Refinement, Abstract: Event<M::Abstract>>: Event<M> {
 }
 
 /// A `NewEvent` is one that appears in a concrete machine which has no counterpart in an abstract
-/// machine. A new event must satisfy 2 properties:
-/// 1. **Convergence**: the event must decrease the [`Refinement`]'s variant, to prevent new events
-///    from deadlocking the abstract machine; and
-/// 2. **Stuttering**: the event must not change the abstract representation of the state.
-pub trait NewEvent<M: ConvergentRefinement>: Event<M> {
+/// machine. A new event must satisfy the **Stuttering** property--that is, the event must not change
+/// the abstract representation of the state.
+pub trait NewEvent<M: Refinement>: Event<M> {
+    /// Prove that applying the concrete event does not change the lifted abstract state.
+    proof fn proof_stuttering(context: M::Context, state: M, input: Self::Input)
+        requires
+            context.valid(),
+            M::invariant(context, state),
+            Self::guard(context, state, input),
+        ensures
+            M::lift(Self::action(context, state, input)) == M::lift(state);
+}
+
+/// A `ConvergentNewEvent` provides a proof of **Convergence**--that is, is guarantees that its
+/// action will decrease the global variant. This prevents this event from "starving" the refinement's
+/// abstract representation by repeatedly cycling between new events, preventing abstract events
+/// from ever taking place.
+pub trait ConvergentNewEvent<M: ConvergentRefinement>: NewEvent<M> {
     proof fn proof_convergent(context: M::Context, state: M, input: Self::Input)
         requires
             context.valid(),
@@ -385,15 +386,6 @@ pub trait NewEvent<M: ConvergentRefinement>: Event<M> {
             <M::Variant as LexLt>::lex_lt(
                 M::variant(context, Self::action(context, state, input)),
                 M::variant(context, state));
-
-    /// Prove that applying the concrete event does not change the lifted abstract state.
-    proof fn proof_stuttering(context: M::Context, state: M, input: Self::Input)
-        requires
-            context.valid(),
-            M::invariant(context, state),
-            Self::guard(context, state, input),
-        ensures
-            M::lift(Self::action(context, state, input)) == M::lift(state);
 }
 
 /// A `MirrorContext` is the executable context type of a [`Mirror`].

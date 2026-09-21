@@ -299,8 +299,11 @@ impl Event<State> for TurnGreenMainland {
 }
 
 impl NewEvent<State> for TurnGreenMainland {
-    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
     proof fn proof_stuttering(context: BridgeContext, state: State, _input: ()) {}
+}
+
+impl ConvergentNewEvent<State> for TurnGreenMainland {
+    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
 }
 
 pub struct TurnGreenIsland;
@@ -337,8 +340,11 @@ impl Event<State> for TurnGreenIsland {
 }
 
 impl NewEvent<State> for TurnGreenIsland {
-    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
     proof fn proof_stuttering(context: BridgeContext, state: State, _input: ()) {}
+}
+
+impl ConvergentNewEvent<State> for TurnGreenIsland {
+    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
 }
 
 proof fn proof_deadlock_free(context: BridgeContext, state: State)

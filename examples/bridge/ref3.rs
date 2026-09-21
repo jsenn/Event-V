@@ -113,7 +113,7 @@ pub struct Environment {
 
 machine! {
 
-deadlock_free machine Ref3 refines ref2::Ref2 {
+convergent deadlock_free machine Ref3 refines ref2::Ref2 {
     context: abs::Context,
 
     state {

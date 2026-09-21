@@ -188,8 +188,11 @@ impl Event<State> for IslandIn {
 }
 
 impl NewEvent<State> for IslandIn {
-    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
     proof fn proof_stuttering(context: BridgeContext, state: State, _input: ()) {}
+}
+
+impl ConvergentNewEvent<State> for IslandIn {
+    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
 }
 
 
@@ -224,8 +227,11 @@ impl Event<State> for IslandOut {
 }
 
 impl NewEvent<State> for IslandOut {
-    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
     proof fn proof_stuttering(context: BridgeContext, state: State, _input: ()) {}
+}
+
+impl ConvergentNewEvent<State> for IslandOut {
+    proof fn proof_convergent(context: BridgeContext, state: State, _input: ()) {}
 }
 
 proof fn proof_deadlock_free(context: BridgeContext, state: State)

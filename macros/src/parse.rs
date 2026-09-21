@@ -8,6 +8,7 @@ use verus_syn::{
 };
 
 mod kw {
+    verus_syn::custom_keyword!(convergent);
     verus_syn::custom_keyword!(deadlock_free);
     verus_syn::custom_keyword!(machine);
     verus_syn::custom_keyword!(refines);
@@ -69,6 +70,7 @@ pub struct MacroInput {
 }
 
 pub struct MachineDecl {
+    pub convergent: Option<Span>,
     pub deadlock_free: Option<Span>,
     pub name: Ident,
     pub refines: Option<Path>,
@@ -498,6 +500,12 @@ impl Parse for MacroInput {
 
 impl Parse for MachineDecl {
     fn parse(input: ParseStream) -> Result<Self> {
+        // Parse optional 'convergent'
+        let convergent = if input.peek(kw::convergent) {
+            Some(input.parse::<kw::convergent>()?.span)
+        } else {
+            None
+        };
         // Parse optional 'deadlock_free'
         let deadlock_free = if input.peek(kw::deadlock_free) {
             Some(input.parse::<kw::deadlock_free>()?.span)
@@ -663,6 +671,7 @@ impl Parse for MachineDecl {
 
         let name_span = name.span();
         Ok(MachineDecl {
+            convergent,
             deadlock_free,
             name,
             refines,

@@ -786,6 +786,12 @@ fn expand_event(decl: &MachineDecl, evt: &EventDecl) -> TokenStream {
                 #conv_method
             }
         }
+    } else if let Some(proof) = &evt.convergence_proof {
+        return Error::new(
+            proof.span,
+            "'proof_convergent' is only allowed on new events (without 'refines') in a 'convergent' refining machine",
+        )
+        .to_compile_error();
     } else {
         quote! {}
     };
